@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-SUGID Concern Handling Activity Diagram</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #ffffff;
+      --color-ink:    #000000;
+      --color-muted:  #333333;
+      --font-sans:    'Geist', system-ui, sans-serif;
+      --font-serif:   'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:    'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1040px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2.2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1040px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Activity Diagram · Concern handling</p>
+    <h1>E-SUGID Concern Handling Activity Diagram</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1040 960" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="activity-title activity-desc">
+        <title id="activity-title">E-SUGID Concern Handling Activity Diagram</title>
+        <desc id="activity-desc">A resident submits a concern, the system validates, de-duplicates and routes it to the responsible office, staff review it and may request more information, then resolve it and the resident is notified.</desc>
+        <defs>
+<marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0, 10 4, 0 8" fill="#333333"/></marker>
+<marker id="gen" markerWidth="14" markerHeight="12" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><polygon points="1 1, 13 6, 1 11" fill="#ffffff" stroke="#000000" stroke-width="1.2"/></marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#ffffff"/>
+<rect x="40" y="64" width="320" height="804" fill="none" stroke="#000000" stroke-width="1.2"/>
+<line x1="40" y1="100" x2="360" y2="100" stroke="#000000" stroke-width="1.2"/>
+<text x="200" y="87" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600" letter-spacing="0.14em">RESIDENT</text>
+<rect x="360" y="64" width="320" height="804" fill="none" stroke="#000000" stroke-width="1.2"/>
+<line x1="360" y1="100" x2="680" y2="100" stroke="#000000" stroke-width="1.2"/>
+<text x="520" y="87" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600" letter-spacing="0.14em">E-SUGID SYSTEM</text>
+<rect x="680" y="64" width="320" height="804" fill="none" stroke="#000000" stroke-width="1.2"/>
+<line x1="680" y1="100" x2="1000" y2="100" stroke="#000000" stroke-width="1.2"/>
+<text x="840" y="87" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600" letter-spacing="0.14em">ASSIGNED OFFICE STAFF</text>
+<path d="M200,146 L200,172" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M200,224 L200,256" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M310,282 L410,282" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M520,308 L520,340" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M520,392 L520,424" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M630,450 L730,450" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M840,476 L840,520" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M752,560 L310,560" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="700.0" y="534.0" width="32" height="20" rx="2" fill="#ffffff"/>
+<text x="716" y="546.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">YES</text>
+<path d="M200,534 L200,512 Q200,504 208,504 L792,504 Q800,504 800,496 L800,476" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="238.0" y="510.0" width="64" height="20" rx="2" fill="#ffffff"/>
+<text x="270" y="522.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">RESPONSE</text>
+<path d="M840,600 L840,636" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="848.0" y="608.0" width="28" height="20" rx="2" fill="#ffffff"/>
+<text x="862.0" y="620.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">NO</text>
+<path d="M840,688 L840,720" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M730,746 L630,746" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M410,746 L310,746" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M200,772 L200,814" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<circle cx="200" cy="136" r="10" fill="#000000"/>
+<rect x="90" y="172" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="90" y="172" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="200.0" y="192.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Fill out concern form</text>
+<text x="200.0" y="209.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">category · details · photo</text>
+<rect x="90" y="256" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="90" y="256" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="200.0" y="276.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Submit concern</text>
+<text x="200.0" y="293.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">with location</text>
+<rect x="410" y="256" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="410" y="256" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="520.0" y="276.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Validate &amp; de-duplicate</text>
+<text x="520.0" y="293.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Cloud Functions</text>
+<rect x="410" y="340" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="410" y="340" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="2.6"/>
+<text x="520.0" y="360.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Route concern</text>
+<text x="520.0" y="377.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">barangay · dept · org</text>
+<rect x="410" y="424" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="410" y="424" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="520.0" y="444.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Notify assigned staff</text>
+<text x="520.0" y="461.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">push · in-app</text>
+<rect x="730" y="424" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="730" y="424" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="840.0" y="444.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Review concern</text>
+<text x="840.0" y="461.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">admin console</text>
+<polygon points="840,520 928,560 840,600 752,560" fill="#ffffff" stroke="#000000" stroke-width="1.4"/><text x="840" y="565" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Need more info?</text>
+<rect x="90" y="534" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="90" y="534" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="200.0" y="554.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Provide information</text>
+<text x="200.0" y="571.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">reply · new photo</text>
+<rect x="730" y="636" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="730" y="636" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="840.0" y="656.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Act on the concern</text>
+<text x="840.0" y="673.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">field work · coordination</text>
+<rect x="730" y="720" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="730" y="720" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="840.0" y="740.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Mark as resolved</text>
+<text x="840.0" y="757.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">public update · note</text>
+<rect x="410" y="720" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="410" y="720" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="520.0" y="740.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Notify resident</text>
+<text x="520.0" y="757.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">push · in-app</text>
+<rect x="90" y="720" width="220" height="52" rx="14" fill="#ffffff"/>
+<rect x="90" y="720" width="220" height="52" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="200.0" y="740.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">View the resolution</text>
+<text x="200.0" y="757.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">feedback · resubmit</text>
+<circle cx="200" cy="828" r="13" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<circle cx="200" cy="828" r="8" fill="#000000"/>
+<line x1="32" y1="892" x2="1008" y2="892" stroke="#000000" stroke-opacity="0.15" stroke-width="0.8"/>
+<text x="32" y="916" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="500" letter-spacing="0.14em">LEGEND</text>
+<circle cx="130" cy="912" r="5" fill="#000000"/>
+<text x="158" y="916" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Start</text>
+<rect x="227" y="904" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="273" y="916" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Action</text>
+<polygon points="366,902 384,912 366,922 348,912" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="394" y="916" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Decision</text>
+<rect x="482" y="904" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="2.6"/>
+<text x="528" y="916" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Core action</text>
+<line x1="636" y1="912" x2="672" y2="912" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="682" y="916" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Control flow</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,577 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function concernCategoryId(categoryId) {
+      return categoryId == 'peace_public_safety' ? 'public_safety'
+        : categoryId == 'roads_accessibility' ? 'roads'
+        : categoryId == 'infrastructure_facilities' ? 'infrastructure'
+        : categoryId == 'drainage_flooding' ? 'drainage'
+        : categoryId == 'sanitation_waste' ? 'sanitation'
+        : categoryId == 'streetlights_utilities' ? 'electricity'
+        : categoryId;
+    }
+
+    function setupComplete() {
+      return !('setupRequired' in profile()) || profile().setupRequired != true;
+    }
+
+    function activeProfile() {
+      return (('accountStatus' in profile())
+              && profile().accountStatus is string
+              && profile().accountStatus.lower() in ['active', 'approved', 'verified'])
+             || (!('accountStatus' in profile())
+              && profile().status is string
+              && profile().status.lower() in ['active', 'approved', 'verified'])
+             || (profile().verificationStatus is string
+              && profile().verificationStatus.lower() in ['verified', 'approved'])
+             || (('identityVerified' in profile()) && profile().identityVerified == true);
+    }
+
+    function staffRole() {
+      let role = profile().role is string ? profile().role.lower() : '';
+      return (role in ['admin', 'administrator', 'lgu_admin', 'municipal_admin', 'lgu'])
+        ? 'lgu'
+        : (role == 'municipal_mayor')
+        ? 'mayor'
+        : (role == 'barangay')
+        ? 'barangay_captain'
+        : (role in ['partner', 'organization', 'partner_organization'])
+          ? 'organization'
+          : (role == 'super_admin')
+            ? 'super_admin'
+            : role;
+    }
+
+    function isApprovedAdmin() {
+      return signedIn()
+             && setupComplete()
+             && staffRole() == 'super_admin'
+             && activeProfile();
+    }
+
+    function announcementPolicyId() {
+      let current = profile();
+      let role = staffRole();
+      return role == 'lgu' && ('departmentId' in current) && current.departmentId is string
+        ? 'department_' + current.departmentId
+        : role == 'organization' && ('organizationId' in current) && current.organizationId is string
+          ? 'organization_' + current.organizationId
+          : role in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor']
+            && ('barangayId' in current) && current.barangayId is string
+            ? 'barangay_' + current.barangayId : '';
+    }
+
+    function announcementPolicyHas(field) {
+      let id = announcementPolicyId();
+      return id.size() > 0
+        && firestore.exists(/databases/(default)/documents/access_policies/$(id))
+        && 'announcements' in firestore.get(/databases/(default)/documents/access_policies/$(id)).data[field];
+    }
+
+    function isApprovedPublisher() {
+      return signedIn()
+             && setupComplete()
+             && activeProfile()
+             && !announcementPolicyHas('denied')
+             && (
+               staffRole() in ['organization', 'barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'mayor', 'lgu', 'super_admin']
+               || (staffRole() == 'barangay_councilor'
+                 && (!('positionCode' in profile()) || profile().positionCode == 'barangay_kagawad'
+                   || announcementPolicyHas('granted')))
+             );
+    }
+
+    function isApprovedBarangayOfficial() {
+      return signedIn()
+             && setupComplete()
+             && staffRole() in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor']
+             && activeProfile();
+    }
+
+    function canUseInteractiveFeatures() {
+      return signedIn()
+             && setupComplete()
+             && activeProfile()
+             && !(staffRole() == 'resident'
+               && ('restrictionStatus' in profile()) && profile().restrictionStatus == 'active'
+               && (!('restrictionEndDate' in profile()) || profile().restrictionEndDate == null
+                 || !(profile().restrictionEndDate is timestamp)
+                 || request.time < profile().restrictionEndDate))
+             && (staffRole() in ['organization', 'barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor', 'lgu', 'super_admin']
+               || (profile().verificationStatus is string
+                 && profile().verificationStatus.lower() in ['verified', 'approved'])
+               || (('identityVerified' in profile()) && profile().identityVerified == true)
+               || (('verifiedAt' in profile()) && profile().verifiedAt != null)
+               || (('verificationApprovedAt' in profile()) && profile().verificationApprovedAt != null));
+    }
+
+    function userProfile(userId) {
+      return firestore.get(/databases/(default)/documents/users/$(userId)).data;
+    }
+
+    function canUploadResidentVerification(userId) {
+      let user = userProfile(userId);
+      return user.role is string
+             && user.role.lower() == 'resident'
+             && user.verificationStatus is string
+             && user.verificationStatus.lower() in [
+               'not_submitted',
+               'rejected',
+               'additional_document_required',
+               'needs_attention',
+               'needs_correction'
+             ];
+    }
+
+    function profile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function emergencyReport(reportId) {
+      return firestore.get(/databases/(default)/documents/emergency_reports/$(reportId)).data;
+    }
+
+    function concernSubmission(submissionId) {
+      return firestore.get(
+        /databases/(default)/documents/submissions/$(submissionId)
+      ).data;
+    }
+
+    function canReadConcern(submissionId) {
+      let concern = concernSubmission(submissionId);
+      let organizationId = ('organizationId' in profile() && profile().organizationId is string)
+        ? profile().organizationId : '';
+      return (isApprovedAdmin()
+               && ('departmentId' in profile())
+               && profile().departmentId == 'it-department'
+               && ('recipientDepartmentId' in concern)
+               && concern.recipientDepartmentId == profile().departmentId)
+             || (signedIn()
+               && staffRole() == 'lgu'
+               && profile().departmentId is string
+               && concern.recipientDepartmentId is string
+               && concern.recipientDepartmentId == profile().departmentId)
+             || (signedIn() && concern.userId == request.auth.uid)
+             || (signedIn() && 'reporterIds' in concern
+               && request.auth.uid in concern.reporterIds)
+             || (isApprovedBarangayOfficial()
+               && ((('barangayId' in concern) && concern.barangayId == profile().barangayId)
+                 || (!('barangayId' in concern) && concern.barangay == profile().barangay))
+               && ('recipientType' in concern) && concern.recipientType == 'barangay')
+             || (signedIn() && staffRole() == 'organization'
+               && setupComplete() && activeProfile()
+               && organizationId.size() > 0
+               && ((('schemaVersion' in concern) && concern.schemaVersion >= 4
+                 && 'organizationIds' in concern
+                 && organizationId in concern.organizationIds
+                 && firestore.get(/databases/(default)/documents/organizations/$(organizationId)).data.status in ['verified', 'active']
+                 && concernCategoryId(firestore.get(/databases/(default)/documents/organizations/$(organizationId)).data.categoryId) == concernCategoryId(concern.categoryId))
+                 || ((!('schemaVersion' in concern) || concern.schemaVersion < 4)
+                   && concern.organizationId == organizationId)));
+    }
+
+    function canReadComplaint(submissionId) {
+      let complaint = concernSubmission(submissionId);
+      return isApprovedAdmin()
+             || (signedIn() && staffRole() == 'mayor' && activeProfile())
+             || (signedIn() && complaint.userId == request.auth.uid)
+             || (signedIn() && 'createdBy' in complaint && complaint.createdBy == request.auth.uid)
+             || (signedIn() && 'reporterIds' in complaint && complaint.reporterIds is list && request.auth.uid in complaint.reporterIds)
+             || (isApprovedBarangayOfficial()
+                 && ((('barangayId' in complaint) && complaint.barangayId == profile().barangayId)
+                     || (!('barangayId' in complaint) && complaint.barangay == profile().barangay)));
+    }
+
+    function partnerCanReadEmergency(reportId) {
+      let organization = profile().organizationName.lower();
+      let report = emergencyReport(reportId);
+      return profile().role.lower() in ['partner', 'organization']
+             && setupComplete()
+             && activeProfile()
+             && (
+               (report.routingKey == 'bfp'
+                 && (organization.matches('.*bfp.*')
+                   || organization.matches('.*fire protection.*')
+                   || organization.matches('.*fire station.*')))
+               || (report.routingKey == 'pnp'
+                 && (organization.matches('.*pnp.*')
+                   || organization.matches('.*police.*')))
+               || (report.routingKey == 'cebeco'
+                 && (organization.matches('.*cebeco.*')
+                   || organization.matches('.*electric cooperative.*')))
+               || (report.routingKey == 'health'
+                 && (organization.matches('.*health.*')
+                   || organization.matches('.*medical.*')
+                   || organization.matches('.*hospital.*')
+                   || organization.matches('.*ambulance.*')))
+               || (report.routingKey == 'mdrrmo'
+                 && (organization.matches('.*mdrrmo.*')
+                   || organization.matches('.*disaster.*')
+                   || organization.matches('.*rescue.*')))
+             );
+    }
+
+    function responderCanReadEmergency(reportId) {
+      let report = emergencyReport(reportId);
+      return signedIn()
+             && setupComplete()
+             && activeProfile()
+             && (
+              (profile().role.lower() in ['barangay', 'barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor']
+                 && profile().barangay.lower() == report.barangay.lower())
+               || partnerCanReadEmergency(reportId)
+             );
+    }
+
+    function announcement(postId) {
+      return firestore.get(
+        /databases/(default)/documents/posts/$(postId)
+      ).data;
+    }
+
+    function canReadAnnouncement(postId) {
+      let post = announcement(postId);
+      return isApprovedAdmin()
+             || (signedIn()
+               && staffRole() == 'lgu'
+               && profile().departmentId is string
+               && post.departmentId is string
+               && post.departmentId == profile().departmentId)
+             || (signedIn() && post.authorId == request.auth.uid)
+             || (signedIn()
+               && post.status in ['approved', 'published']
+               && (
+                 post.visibility == 'public'
+                 || (post.targetBarangays is list
+                   && post.targetBarangays.hasAny([profile().barangay]))
+               ));
+    }
+
+    match /verifications/{userId}/supporting_document.jpg {
+      allow read: if isApprovedAdmin()
+                  || (signedIn() && request.auth.uid == userId);
+
+      allow create, update: if signedIn()
+                            && request.auth.uid == userId
+                            && canUploadResidentVerification(userId)
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if signedIn()
+                    && request.auth.uid == userId
+                    && canUploadResidentVerification(userId);
+    }
+
+    match /verifications/{userId}/front_document.jpg {
+      allow read: if isApprovedAdmin()
+                  || (signedIn() && request.auth.uid == userId);
+
+      allow create, update: if signedIn()
+                            && request.auth.uid == userId
+                            && canUploadResidentVerification(userId)
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if signedIn()
+                    && request.auth.uid == userId
+                    && canUploadResidentVerification(userId);
+    }
+
+    match /verifications/{userId}/back_document.jpg {
+      allow read: if isApprovedAdmin()
+                  || (signedIn() && request.auth.uid == userId);
+
+      allow create, update: if signedIn()
+                            && request.auth.uid == userId
+                            && canUploadResidentVerification(userId)
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if signedIn()
+                    && request.auth.uid == userId
+                    && canUploadResidentVerification(userId);
+    }
+
+    match /profile_photos/{userId}/avatar {
+      // Profile photos remain private to authenticated E-SUGID users. Only
+      // the resident who owns this exact path may replace or remove it.
+      allow read: if signedIn();
+
+      allow create, update: if signedIn()
+                            && request.auth.uid == userId
+                            && profile().role is string
+                            && profile().role.lower() == 'resident'
+                            && activeProfile()
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/{allPaths=**} {
+      // User profile photos and assets uploaded by authenticated users or admins
+      allow read: if signedIn();
+
+      allow create, update: if signedIn()
+                            && (request.auth.uid == userId || isApprovedAdmin())
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if signedIn() && (request.auth.uid == userId || isApprovedAdmin());
+    }
+
+    match /organizations/{orgId}/{allPaths=**} {
+      // Organization logos and photos uploaded by partner organizations or admins
+      allow read: if signedIn();
+
+      allow create, update: if signedIn()
+                            && (
+                              isApprovedAdmin()
+                              || (staffRole() == 'organization'
+                                  && ('organizationId' in profile())
+                                  && profile().organizationId == orgId)
+                            )
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if signedIn()
+                    && (
+                      isApprovedAdmin()
+                      || (staffRole() == 'organization'
+                          && ('organizationId' in profile())
+                          && profile().organizationId == orgId)
+                    );
+    }
+
+    match /barangays/{barangayId}/{allPaths=**} {
+      // Barangay logos and photos uploaded by barangay officials or admins
+      allow read: if signedIn();
+
+      allow create, update: if signedIn()
+                            && (
+                              isApprovedAdmin()
+                              || (isApprovedBarangayOfficial()
+                                  && ('barangayId' in profile())
+                                  && profile().barangayId == barangayId)
+                            )
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if signedIn()
+                    && (
+                      isApprovedAdmin()
+                      || (isApprovedBarangayOfficial()
+                          && ('barangayId' in profile())
+                          && profile().barangayId == barangayId)
+                    );
+    }
+
+    match /verifications/{userId}/proof_of_residency.jpg {
+      allow read: if isApprovedAdmin()
+                  || (signedIn() && request.auth.uid == userId);
+
+      allow create, update: if signedIn()
+                            && request.auth.uid == userId
+                            && canUploadResidentVerification(userId)
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if signedIn()
+                    && request.auth.uid == userId
+                    && canUploadResidentVerification(userId);
+    }
+
+    match /announcements/{userId}/{postId}/{fileName} {
+      // The publisher requests the download URL immediately after upload,
+      // before the Firestore post is committed. Owners may read their own
+      // upload; every other reader must pass the post visibility check.
+      allow read: if (signedIn() && request.auth.uid == userId)
+                  || canReadAnnouncement(postId);
+
+      allow create, update: if isApprovedPublisher()
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if request.auth != null
+                    && request.auth.uid == userId;
+    }
+
+
+    // Legacy flat announcement uploads cannot be correlated with a Firestore
+    // post ID. Keep them private to their publisher and LGU administrators.
+    match /announcements/{userId}/{fileName} {
+      allow read: if isApprovedAdmin()
+                  || (signedIn() && request.auth.uid == userId);
+
+      allow create, update: if false;
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /emergencies/{userId}/{fileName} {
+      allow read: if isApprovedAdmin()
+                  || (signedIn() && request.auth.uid == userId);
+
+      allow create, update: if request.auth != null
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if request.auth != null
+                    && request.auth.uid == userId;
+    }
+
+    // New emergency uploads should include the Firestore report ID so that
+    // evidence inherits the same barangay/agency visibility as the report.
+    match /emergencies/{userId}/{reportId}/{fileName} {
+      allow read: if isApprovedAdmin()
+                  || (signedIn() && request.auth.uid == userId)
+                  || responderCanReadEmergency(reportId);
+
+      allow create, update: if signedIn()
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /concerns/{userId}/{submissionId}/{fileName} {
+      // The resident requests the download URL immediately after uploading
+      // evidence, before the Firestore submission is created. Keep this
+      // bootstrap read private to the owner; other readers still inherit the
+      // concern's role- and barangay-based access checks.
+      allow read: if (signedIn() && request.auth.uid == userId)
+                  || canReadConcern(submissionId);
+
+      allow create, update: if canUseInteractiveFeatures()
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if canUseInteractiveFeatures()
+                    && request.auth.uid == userId;
+    }
+
+    match /complaints/{userId}/{submissionId}/{fileName} {
+      // The resident requests the download URL immediately after uploading
+      // evidence, before the Firestore submission is created. Keep this
+      // bootstrap read private to the owner; other readers still inherit the
+      // complaint's role- and barangay-based access checks.
+      allow read: if (signedIn() && request.auth.uid == userId)
+                  || canReadComplaint(submissionId);
+
+      allow create, update: if canUseInteractiveFeatures()
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && (request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp']
+                                || request.resource.contentType.matches('image/.*'));
+
+      allow delete: if canUseInteractiveFeatures()
+                    && request.auth.uid == userId;
+    }
+
+    match /complaints/{userId}/{fileName} {
+      // Legacy unversioned paths have no complaint ID to authorize by recipient.
+      allow read: if (signedIn() && request.auth.uid == userId)
+                  || isApprovedBarangayOfficial()
+                  || isApprovedAdmin();
+
+      allow create, update: if canUseInteractiveFeatures()
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && (request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp']
+                                || request.resource.contentType.matches('image/.*'));
+
+      allow delete: if canUseInteractiveFeatures()
+                    && request.auth.uid == userId;
+    }
+
+    match /organization_registration_proofs/{userId}/{fileName} {
+      allow read: if isApprovedAdmin() || (signedIn() && request.auth.uid == userId);
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && resource == null
+        && !firestore.exists(/databases/(default)/documents/users/$(userId))
+        && fileName.matches('^proof-[a-f0-9-]{36}\\.(pdf|jpg|jpeg|png)$')
+        && request.resource.size > 0
+        && request.resource.size <= 8 * 1024 * 1024
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
+      allow update: if false;
+      allow delete: if signedIn() && request.auth.uid == userId
+        && !firestore.exists(/databases/(default)/documents/users/$(userId));
+    }
+
+    match /staff_registration_proofs/{userId}/{fileName} {
+      allow read: if isApprovedAdmin() || (signedIn() && request.auth.uid == userId);
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && resource == null
+        && !firestore.exists(/databases/(default)/documents/users/$(userId))
+        && fileName.matches('^proof-[a-f0-9-]{36}\\.(pdf|jpg|jpeg|png)$')
+        && request.resource.size > 0
+        && request.resource.size <= 8 * 1024 * 1024
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png'];
+      allow update: if false;
+      allow delete: if signedIn() && request.auth.uid == userId
+        && !firestore.exists(/databases/(default)/documents/users/$(userId));
+    }
+
+    match /concerns/{userId}/{fileName} {
+      // Legacy unversioned paths have no concern ID to authorize by recipient.
+      allow read: if signedIn() && request.auth.uid == userId;
+
+      allow create, update: if canUseInteractiveFeatures()
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if canUseInteractiveFeatures()
+                    && request.auth.uid == userId;
+    }
+
+    match /marketplace/{userId}/{fileName} {
+      allow read: if request.auth != null;
+
+      allow create, update: if canUseInteractiveFeatures()
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+
+      allow delete: if canUseInteractiveFeatures()
+                    && request.auth.uid == userId;
+    }
+
+    match /job_images/{userId}/{fileName} {
+      allow read: if request.auth != null;
+
+      allow create, update: if canUseInteractiveFeatures()
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+
+      allow delete: if canUseInteractiveFeatures()
+                    && request.auth.uid == userId;
+    }
+
+    match /chat_attachments/{userId}/{fileName} {
+      // get, not read: listing a folder would expose every private chat photo
+      // of that user. File names carry a random UUID, so only chat members
+      // holding the message can open one.
+      allow get: if request.auth != null;
+
+      allow create, update: if canUseInteractiveFeatures()
+                            && request.auth.uid == userId
+                            && request.resource.size < 8 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+
+      allow delete: if canUseInteractiveFeatures()
+                    && request.auth.uid == userId;
+    }
+  }
+}

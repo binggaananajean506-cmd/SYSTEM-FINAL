@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-SUGID Use Case Diagram</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #ffffff;
+      --color-ink:    #000000;
+      --color-muted:  #333333;
+      --font-sans:    'Geist', system-ui, sans-serif;
+      --font-serif:   'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:    'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1360px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2.2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1360px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Use Case Diagram · E-SUGID</p>
+    <h1>E-SUGID Use Case Diagram</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1360 780" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="use-case-title use-case-desc">
+        <title id="use-case-title">E-SUGID Use Case Diagram</title>
+        <desc id="use-case-desc">Residents register, receive announcements, submit concerns, report emergencies and request services; barangay, organization and department staff handle publishing, concerns, emergencies and verification; the LGU IT administrator approves staff and manages structure and policies.</desc>
+        <defs>
+<marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0, 10 4, 0 8" fill="#333333"/></marker>
+<marker id="gen" markerWidth="14" markerHeight="12" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><polygon points="1 1, 13 6, 1 11" fill="#ffffff" stroke="#000000" stroke-width="1.2"/></marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#ffffff"/>
+<rect x="220" y="96" width="760" height="592" rx="8" fill="none" stroke="#000000" stroke-width="1.4"/>
+<text x="600" y="124" fill="#000000" font-size="15" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">E-SUGID Community Services System</text>
+<path d="M108,372 L132,372 Q140,372 140,364 L140,176 Q140,168 148,168 L260,168" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M108,384 L148,384 Q156,384 156,376 L156,256 Q156,248 164,248 L260,248" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M108,396 L164,396 Q172,396 172,388 L172,336 Q172,328 180,328 L260,328" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M108,408 L260,408" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M108,420 L164,420 Q172,420 172,428 L172,480 Q172,488 180,488 L260,488" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M108,432 L148,432 Q156,432 156,440 L156,560 Q156,568 164,568 L260,568" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M108,444 L132,444 Q140,444 140,452 L140,640 Q140,648 148,648 L260,648" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M1072,272 L1020,272 Q1012,272 1012,264 L1012,176 Q1012,168 1004,168 L940,168" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M1072,284 L1004,284 Q996,284 996,276 L996,240 Q996,232 988,232 L940,232" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M1072,296 L940,296" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M1072,308 L1004,308 Q996,308 996,316 L996,352 Q996,360 988,360 L940,360" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M1072,320 L1020,320 Q1012,320 1012,328 L1012,416 Q1012,424 1004,424 L940,424" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M1072,572 L1020,572 Q1012,572 1012,564 L1012,528 Q1012,520 1004,520 L940,520" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M1072,584 L940,584" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M1072,596 L1020,596 Q1012,596 1012,604 L1012,640 Q1012,648 1004,648 L940,648" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M1100,542 L1100,356" fill="none" stroke="#000000" stroke-width="1.3" marker-end="url(#gen)"/>
+<path d="M1232,176 L1172,176 Q1164,176 1164,184 L1164,266 Q1164,274 1156,274 L1130,274" fill="none" stroke="#000000" stroke-width="1.3" marker-end="url(#gen)"/>
+<path d="M1232,296 L1130,296" fill="none" stroke="#000000" stroke-width="1.3" marker-end="url(#gen)"/>
+<path d="M1232,416 L1172,416 Q1164,416 1164,408 L1164,326 Q1164,318 1156,318 L1130,318" fill="none" stroke="#000000" stroke-width="1.3" marker-end="url(#gen)"/>
+<ellipse cx="400" cy="168" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="400" y="172.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Register &amp; verify residency</text>
+<ellipse cx="400" cy="248" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="400" y="252.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">View announcements &amp; alerts</text>
+<ellipse cx="400" cy="328" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="2.6"/><text x="400" y="332.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Submit &amp; track a concern</text>
+<ellipse cx="400" cy="408" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="400" y="412.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Report an emergency</text>
+<ellipse cx="400" cy="488" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="400" y="492.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Request documents &amp; helpdesk</text>
+<ellipse cx="400" cy="568" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="400" y="572.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Join Bayanihan, jobs &amp; marketplace</text>
+<ellipse cx="400" cy="648" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="400" y="652.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Ask the E-SUGID Assistant</text>
+<ellipse cx="800" cy="168" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="800" y="172.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Publish announcements</text>
+<ellipse cx="800" cy="232" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="800" y="236.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Handle assigned concerns</text>
+<ellipse cx="800" cy="296" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="800" y="300.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Respond to emergency reports</text>
+<ellipse cx="800" cy="360" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="800" y="364.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Verify resident accounts</text>
+<ellipse cx="800" cy="424" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="800" y="428.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Request staff accounts</text>
+<ellipse cx="800" cy="520" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="800" y="524.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Approve staff accounts</text>
+<ellipse cx="800" cy="584" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="800" y="588.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Manage departments &amp; orgs</text>
+<ellipse cx="800" cy="648" rx="140" ry="24" fill="#ffffff" stroke="#000000" stroke-width="1.2"/><text x="800" y="652.5" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="500">Set access policies &amp; audit</text>
+<circle cx="80" cy="378" r="10" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<line x1="80" y1="388" x2="80" y2="416" stroke="#000000" stroke-width="1.6" fill="none"/>
+<line x1="62" y1="398" x2="98" y2="398" stroke="#000000" stroke-width="1.6" fill="none"/>
+<path d="M66,438 L80,416 L94,438" stroke="#000000" stroke-width="1.6" fill="none"/>
+<text x="80" y="456" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Resident</text>
+<circle cx="1100" cy="266" r="10" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<line x1="1100" y1="276" x2="1100" y2="304" stroke="#000000" stroke-width="1.6" fill="none"/>
+<line x1="1082" y1="286" x2="1118" y2="286" stroke="#000000" stroke-width="1.6" fill="none"/>
+<path d="M1086,326 L1100,304 L1114,326" stroke="#000000" stroke-width="1.6" fill="none"/>
+<text x="1100" y="344" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Staff</text>
+<circle cx="1100" cy="554" r="10" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<line x1="1100" y1="564" x2="1100" y2="592" stroke="#000000" stroke-width="1.6" fill="none"/>
+<line x1="1082" y1="574" x2="1118" y2="574" stroke="#000000" stroke-width="1.6" fill="none"/>
+<path d="M1086,614 L1100,592 L1114,614" stroke="#000000" stroke-width="1.6" fill="none"/>
+<text x="1100" y="632" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">LGU IT Admin</text>
+<circle cx="1260" cy="146" r="10" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<line x1="1260" y1="156" x2="1260" y2="184" stroke="#000000" stroke-width="1.6" fill="none"/>
+<line x1="1242" y1="166" x2="1278" y2="166" stroke="#000000" stroke-width="1.6" fill="none"/>
+<path d="M1246,206 L1260,184 L1274,206" stroke="#000000" stroke-width="1.6" fill="none"/>
+<text x="1260" y="224" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Barangay Official</text>
+<circle cx="1260" cy="266" r="10" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<line x1="1260" y1="276" x2="1260" y2="304" stroke="#000000" stroke-width="1.6" fill="none"/>
+<line x1="1242" y1="286" x2="1278" y2="286" stroke="#000000" stroke-width="1.6" fill="none"/>
+<path d="M1246,326 L1260,304 L1274,326" stroke="#000000" stroke-width="1.6" fill="none"/>
+<text x="1260" y="344" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Organization Staff</text>
+<circle cx="1260" cy="386" r="10" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+<line x1="1260" y1="396" x2="1260" y2="424" stroke="#000000" stroke-width="1.6" fill="none"/>
+<line x1="1242" y1="406" x2="1278" y2="406" stroke="#000000" stroke-width="1.6" fill="none"/>
+<path d="M1246,446 L1260,424 L1274,446" stroke="#000000" stroke-width="1.6" fill="none"/>
+<text x="1260" y="464" fill="#000000" font-size="13" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">LGU Department</text>
+<line x1="32" y1="716" x2="1328" y2="716" stroke="#000000" stroke-opacity="0.15" stroke-width="0.8"/>
+<text x="32" y="740" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="500" letter-spacing="0.14em">LEGEND</text>
+<line x1="112" y1="736" x2="148" y2="736" stroke="#333333" stroke-width="1.3"/>
+<text x="158" y="740" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Association</text>
+<line x1="266" y1="736" x2="302" y2="736" stroke="#333333" stroke-width="1.3" marker-end="url(#gen)"/>
+<text x="312" y="740" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Generalization (is a kind of)</text>
+<ellipse cx="557" cy="736" rx="18" ry="9" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="585" y="740" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Use case</text>
+<rect x="673" y="728" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="2.6"/>
+<text x="719" y="740" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Core use case</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

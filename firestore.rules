@@ -1,0 +1,1725 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function boundedString(value, minimum, maximum) {
+      return value is string
+        && value.size() >= minimum
+        && value.size() <= maximum;
+    }
+
+    function validPhilippineMobile(value) {
+      return value is string && value.matches('^\\+639[0-9]{9}$');
+    }
+
+    function validMarketplaceItem() {
+      let item = request.resource.data;
+      return boundedString(item.name, 3, 100)
+        && item.price is string
+        && item.price.matches('^[0-9]{1,9}(\\.[0-9]{2})?$')
+        && boundedString(item.priceUnit, 1, 30)
+        && boundedString(item.description, 10, 1000)
+        && boundedString(item.imageUrl, 1, 2048)
+        && boundedString(item.category, 1, 80)
+        && boundedString(item.location, 2, 200)
+        && item.quantity is int
+        && item.quantity >= 1
+        && item.quantity <= 999999
+        && item.status in ['Available', 'Reserved', 'Sold', 'Unavailable'];
+    }
+
+    function validHelpPost() {
+      let job = request.resource.data;
+      return boundedString(job.title, 3, 100)
+        && boundedString(job.location, 3, 200)
+        && job.description is string
+        && job.description.size() <= 1000
+        && job.category in ['request', 'offer']
+        && boundedString(job.helpCategory, 1, 80)
+        && boundedString(job.dateNeeded, 1, 80)
+        && job.scheduledAt is timestamp
+        && job.scheduledAt >= request.time - duration.value(1, 'm')
+        && validPhilippineMobile(job.contact)
+        && job.contactPreference in ['Calls', 'Messages', 'Both']
+        && job.status == 'Active'
+        && job.helpersNeeded is int
+        && job.helpersNeeded >= 1
+        && job.helpersNeeded <= 10;
+    }
+
+    function validCalendarEvent() {
+      let event = request.resource.data;
+      return event.keys().hasAll([
+          'id', 'title', 'description', 'startAt', 'endAt', 'allDay',
+          'category', 'location', 'createdBy', 'sourceType', 'sourceId',
+          'visibility', 'targetBarangay', 'targetUserIds', 'audienceKeys',
+          'status', 'isImportant', 'organizerName', 'createdAt', 'updatedAt'
+        ])
+        && event.keys().hasOnly([
+          'id', 'title', 'description', 'startAt', 'endAt', 'allDay',
+          'category', 'location', 'createdBy', 'sourceType', 'sourceId',
+          'visibility', 'targetBarangay', 'targetUserIds', 'audienceKeys',
+          'status', 'isImportant', 'organizerName', 'categoryName', 'createdAt', 'updatedAt'
+        ])
+        && event.id is string
+        && boundedString(event.title, 1, 120)
+        && event.description is string && event.description.size() <= 1200
+        && event.location is string && event.location.size() <= 200
+        && event.organizerName is string && event.organizerName.size() <= 120
+        && (!('categoryName' in event)
+          || (event.categoryName is string && event.categoryName.size() <= 50))
+        && event.startAt is timestamp && event.endAt is timestamp
+        && event.endAt > event.startAt
+        && event.endAt - event.startAt <= duration.value(14, 'd')
+        && event.allDay is bool
+        && event.category in [
+          'barangay_event', 'bayanihan', 'announcement', 'document',
+          'marketplace_meetup', 'emergency', 'personal'
+        ]
+        && event.sourceType in [
+          'manual', 'announcement', 'bayanihan', 'document_request',
+          'marketplace_meetup', 'emergency'
+        ]
+        && event.sourceId is string && event.sourceId.size() <= 300
+        && event.visibility in ['public', 'barangay', 'private']
+        && event.targetBarangay is string && event.targetBarangay.size() <= 80
+        && event.targetUserIds is list && event.targetUserIds.size() <= 20
+        && event.audienceKeys is list
+        && event.audienceKeys.size() > 0 && event.audienceKeys.size() <= 20
+        && event.status in ['scheduled', 'ongoing', 'completed', 'cancelled']
+        && event.isImportant is bool
+        && event.createdBy is string && event.createdBy.size() > 0
+        && event.createdAt is timestamp && event.updatedAt is timestamp;
+    }
+
+    function validCalendarAudience() {
+      let event = request.resource.data;
+      return (event.visibility == 'public'
+          && event.targetBarangay == ''
+          && event.targetUserIds.size() == 0
+          && event.audienceKeys == ['municipality:barili'])
+        || (event.visibility == 'barangay'
+          && event.targetBarangay.size() > 0
+          && event.targetUserIds.size() == 0
+          && event.audienceKeys == ['barangay:' + event.targetBarangay])
+        || (event.visibility == 'private'
+          && event.targetBarangay == ''
+          && event.targetUserIds.size() > 0
+          && event.audienceKeys.size() == event.targetUserIds.size());
+    }
+
+    function validPersonalCalendarEvent() {
+      let event = request.resource.data;
+      return event.visibility == 'private'
+        && event.category == 'personal'
+        && event.sourceType == 'manual'
+        && event.sourceId == ''
+        && event.createdBy == request.auth.uid
+        && event.targetBarangay == ''
+        && event.targetUserIds == [request.auth.uid]
+        && event.audienceKeys == ['user:' + request.auth.uid]
+        && event.isImportant == false;
+    }
+
+    function validOfficialCalendarEvent() {
+      let event = request.resource.data;
+      return event.visibility in ['public', 'barangay']
+        && event.category in ['barangay_event', 'announcement', 'emergency']
+        && event.sourceType in ['manual', 'announcement', 'emergency']
+        && event.targetUserIds.size() == 0;
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function staffRoleFrom(currentProfile) {
+      let role = currentProfile.role is string
+        ? currentProfile.role.lower().replace('^\\s+|\\s+$', '')
+        : '';
+      return (role in ['admin', 'administrator', 'lgu_admin', 'municipal_admin', 'lgu'])
+        ? 'lgu'
+        : (role == 'municipal_mayor')
+        ? 'mayor'
+        : (role == 'barangay')
+        ? 'barangay_captain'
+        : (role in ['partner', 'organization', 'partner_organization'])
+          ? 'organization'
+          : (role == 'super_admin')
+            ? 'super_admin'
+            : role;
+    }
+
+    function staffRole() {
+      return staffRoleFrom(profile());
+    }
+
+    function isExplicitlyRestrictedProfile(currentProfile) {
+      return (currentProfile.accountStatus is string
+              && currentProfile.accountStatus.lower() in ['disabled', 'deactivated', 'suspended', 'rejected'])
+          || (currentProfile.status is string
+              && currentProfile.status.lower() in ['disabled', 'deactivated', 'suspended', 'rejected']);
+    }
+
+    function hasApprovedProfileData(currentProfile) {
+      return ((currentProfile.accountStatus is string
+              && currentProfile.accountStatus.lower() in ['active', 'approved', 'verified'])
+          || (!isExplicitlyRestrictedProfile(currentProfile)
+              && ((currentProfile.status is string
+                  && currentProfile.status.lower() in ['active', 'approved', 'verified'])
+                || (currentProfile.verificationStatus is string
+                  && currentProfile.verificationStatus.lower() in ['verified', 'approved'])
+                || (('identityVerified' in currentProfile) && currentProfile.identityVerified == true))))
+        && (!('setupRequired' in currentProfile) || currentProfile.setupRequired != true);
+    }
+
+    function hasApprovedProfile() {
+      return signedIn()
+        && hasApprovedProfileData(profile());
+    }
+
+    function isApprovedAdmin() {
+      let currentProfile = profile();
+      return hasApprovedProfile()
+        && currentProfile.role is string
+        && staffRole() == 'super_admin';
+    }
+
+    function actorAccessPolicyId() {
+      let current = profile();
+      let role = staffRoleFrom(current);
+      return role == 'lgu' && ('departmentId' in current) && current.departmentId is string
+        ? 'department_' + current.departmentId
+        : role == 'organization' && ('organizationId' in current) && current.organizationId is string
+          ? 'organization_' + current.organizationId
+          : role in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor']
+            && ('barangayId' in current) && current.barangayId is string
+            ? 'barangay_' + current.barangayId : '';
+    }
+
+    function policyHas(field, permission) {
+      let id = actorAccessPolicyId();
+      return id.size() > 0
+        && exists(/databases/$(database)/documents/access_policies/$(id))
+        && field in get(/databases/$(database)/documents/access_policies/$(id)).data
+        && permission in get(/databases/$(database)/documents/access_policies/$(id)).data[field];
+    }
+
+    function operationalAccess(permission, defaultAllowed) {
+      // Every caller checks the staff role and approval state. Keep this helper
+      // small: complex post/concern rules have a strict expression budget.
+      return !policyHas('denied', permission)
+        && (defaultAllowed || policyHas('granted', permission));
+    }
+
+    function isApprovedLguStaff() {
+      return hasApprovedProfile()
+        && profile().role is string
+        && staffRole() == 'lgu'
+        && staffDepartmentId().size() > 0;
+    }
+
+    function isApprovedMayor() {
+      return hasApprovedProfile()
+        && profile().role is string
+        && staffRole() == 'mayor';
+    }
+
+    function validEmergencyAlertCreate() {
+      let alert = request.resource.data;
+      return alert.keys().hasAll([
+          'title', 'message', 'instructions', 'alertType', 'severity',
+          'visibility', 'targetBarangays', 'audienceKeys', 'expiresAt',
+          'active', 'status', 'notificationRequested', 'createdBy'
+        ])
+        && alert.title is string && alert.title.size() > 0 && alert.title.size() <= 100
+        && alert.message is string && alert.message.size() > 0 && alert.message.size() <= 600
+        && alert.instructions is string && alert.instructions.size() > 0 && alert.instructions.size() <= 600
+        && alert.alertType is string && alert.alertType.size() > 0 && alert.alertType.size() <= 80
+        && alert.severity in ['warning', 'critical']
+        && alert.visibility in ['public', 'targeted']
+        && alert.targetBarangays is list && alert.targetBarangays.size() > 0 && alert.targetBarangays.size() <= 42
+        && alert.audienceKeys is list && alert.audienceKeys.size() > 0 && alert.audienceKeys.size() <= 42
+        && alert.expiresAt is string
+        && alert.active == true
+        && alert.status == 'active'
+        && alert.notificationRequested == true
+        && alert.createdBy == request.auth.uid;
+    }
+
+    function isSuperAdmin() {
+      return hasApprovedProfile()
+        && staffRole() == 'super_admin';
+    }
+
+    function isApprovedBarangayOfficial() {
+      return hasApprovedProfile()
+        && profile().role is string
+        && profile().barangay is string
+        && staffRole() in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor'];
+    }
+
+    function canVerifyBarangayResidents() {
+      return isApprovedBarangayOfficial()
+        && operationalAccess('verifications:local', profile().canVerifyResidents == true)
+        && profile().barangayId is string
+        && profile().barangayId.size() > 0;
+    }
+
+    function canManageBarangay() {
+      return isApprovedBarangayOfficial()
+        && staffRole() in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary'];
+    }
+
+    function isOwnBarangayConcern(concern) {
+      return isApprovedBarangayOfficial()
+        && operationalAccess('concerns', canManageBarangay())
+        && ('recipientType' in concern) && concern.recipientType == 'barangay'
+        && profile().barangayId is string
+        && profile().barangayId.size() > 0
+        && concern.barangayId is string
+        && concern.barangayId == profile().barangayId;
+    }
+
+    // Keep complaint authorization below the rules expression budget.
+    function canReadComplaintOffice(complaint) {
+      let current = profile();
+      let role = staffRoleFrom(current);
+      return hasApprovedProfileData(current)
+        && (role in ['super_admin', 'mayor']
+          || (role in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor']
+            && current.barangayId is string && current.barangayId.size() > 0
+            && complaint.barangayId == current.barangayId
+            && operationalAccess('concerns', role in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary'])));
+    }
+
+    function canReadComplaint(complaint) {
+      return signedIn() && (complaint.userId == request.auth.uid
+        || ('createdBy' in complaint && complaint.createdBy == request.auth.uid)
+        || ('reporterIds' in complaint && complaint.reporterIds is list && request.auth.uid in complaint.reporterIds)
+        || canReadComplaintOffice(complaint));
+    }
+
+    function isApprovedBarangayAlertPublisher() {
+      return isApprovedBarangayOfficial()
+        && staffRole() in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary']
+        && profile().barangay.size() > 0;
+    }
+
+    function isOwnBarangayAlert(alert) {
+      return alert.audience == 'targeted'
+        && alert.visibility == 'targeted'
+        && alert.targetBarangay == profile().barangay
+        && alert.targetBarangays == [profile().barangay]
+        && alert.audienceKeys == ['barangay:' + profile().barangay];
+    }
+
+    function isApprovedPartner() {
+      return hasApprovedProfile()
+        && profile().role is string
+        && staffRole() == 'organization';
+    }
+
+    function staffOrganizationId() {
+      return ('organizationId' in profile() && profile().organizationId is string)
+        ? profile().organizationId : '';
+    }
+
+    function isOwnOrganizationRecord(record) {
+      return isApprovedPartner()
+        && staffOrganizationId().size() > 0
+        && record.organizationId is string
+        && record.organizationId == staffOrganizationId();
+    }
+
+    function concernCategoryId(categoryId) {
+      return categoryId == 'peace_public_safety' ? 'public_safety'
+        : categoryId == 'roads_accessibility' ? 'roads'
+        : categoryId == 'infrastructure_facilities' ? 'infrastructure'
+        : categoryId == 'drainage_flooding' ? 'drainage'
+        : categoryId == 'sanitation_waste' ? 'sanitation'
+        : categoryId == 'streetlights_utilities' ? 'electricity'
+        : categoryId;
+    }
+
+    function isMatchingOrganizationConcern(concern) {
+      let organizationId = staffOrganizationId();
+      return isApprovedPartner()
+        && operationalAccess('concerns', true)
+        && organizationId.size() > 0
+        && (
+          (('organizationIds' in concern)
+            && concern.organizationIds is list
+            && organizationId in concern.organizationIds)
+          || (('organizationId' in concern)
+            && concern.organizationId is string
+            && concern.organizationId == organizationId)
+        );
+    }
+
+    function canReadResidentConcern(concern) {
+      return signedIn()
+        && ('reporterIds' in concern && request.auth.uid in concern.reporterIds);
+    }
+
+    function canReadRoutedConcern(concern) {
+      return ('schemaVersion' in concern && concern.schemaVersion >= 4)
+        ? (canReadResidentConcern(concern) || isMatchingOrganizationConcern(concern))
+        : (isOwnOrganizationRecord(concern) && operationalAccess('concerns', true));
+    }
+
+    function canReadStaffOrganizationConcern(concern) {
+      return ('schemaVersion' in concern && concern.schemaVersion >= 4)
+        ? isMatchingOrganizationConcern(concern)
+        : (isOwnOrganizationRecord(concern) && operationalAccess('concerns', true));
+    }
+
+    function staffDepartmentId() {
+      return ('departmentId' in profile() && profile().departmentId is string)
+        ? profile().departmentId : '';
+    }
+
+    function isOwnLguDepartmentRecord(record) {
+      return isApprovedLguStaff()
+        && record.departmentId is string
+        && record.departmentId == staffDepartmentId();
+    }
+
+    function isOwnLguDepartmentConcern(concern) {
+      return isApprovedLguStaff()
+        && operationalAccess('concerns', true)
+        && concern.recipientDepartmentId is string
+        && concern.recipientDepartmentId == staffDepartmentId();
+    }
+
+    function isOwnItDepartmentConcern(concern) {
+      return isApprovedAdmin()
+        && staffDepartmentId() == 'it-department'
+        && ('recipientDepartmentId' in concern)
+        && concern.recipientDepartmentId == staffDepartmentId();
+    }
+
+    function canNotifyConcernRecipient(concernId, userId) {
+      let concern = get(/databases/$(database)/documents/submissions/$(concernId)).data;
+      return (userId == concern.userId
+          || (('reporterIds' in concern) && (concern.reporterIds is list) && (userId in concern.reporterIds)))
+        && (isApprovedAdmin()
+          || isApprovedMayor()
+          || isOwnItDepartmentConcern(concern)
+          || isOwnLguDepartmentConcern(concern)
+          || isOwnBarangayConcern(concern)
+          || isMatchingOrganizationConcern(concern));
+    }
+
+    function canReadItConcernAudit(record) {
+      return record.targetType == 'submission'
+        && record.targetId is string
+        && isOwnItDepartmentConcern(get(/databases/$(database)/documents/submissions/$(record.targetId)).data);
+    }
+
+    function isApprovedStaff() {
+      return isApprovedAdmin() || isApprovedMayor() || isApprovedLguStaff() || isApprovedBarangayOfficial() || isApprovedPartner();
+    }
+
+    function canUseInteractiveFeatures() {
+      return hasApprovedProfile()
+        && !(staffRole() == 'resident'
+          && ('restrictionStatus' in profile()) && profile().restrictionStatus == 'active'
+          && (!('restrictionEndDate' in profile()) || profile().restrictionEndDate == null
+            || !(profile().restrictionEndDate is timestamp)
+            || request.time < profile().restrictionEndDate))
+        && (staffRole() in ['super_admin', 'lgu', 'barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor', 'organization']
+          || (profile().verificationStatus is string
+            && profile().verificationStatus.lower() in ['verified', 'approved'])
+          || (('identityVerified' in profile()) && profile().identityVerified == true)
+          || (('verifiedAt' in profile()) && profile().verifiedAt != null)
+          || (('verificationApprovedAt' in profile()) && profile().verificationApprovedAt != null));
+    }
+
+    function changesResidentVerificationDecision() {
+      return resource.data.role is string
+        && resource.data.role.lower() == 'resident'
+        && request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'verificationStatus', 'verificationData', 'submittedAt', 'resubmittedAt',
+          'reviewedAt', 'reviewedBy', 'reviewedByName', 'reviewReason', 'reviewNote',
+          'verifiedAt', 'verifiedBy', 'verifiedByName', 'verifiedBarangayId',
+          'needsAttentionAt', 'rejectionReason', 'rejectionNote', 'rejectedAt',
+          'rejectedBy', 'approvedAt', 'verificationApprovedAt'
+        ]);
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function validResidentConcernReply() {
+      let oldResponseCount = ('residentResponses' in resource.data
+          && resource.data.residentResponses is list)
+        ? resource.data.residentResponses.size()
+        : 0;
+      let oldHistoryCount = ('statusHistory' in resource.data
+          && resource.data.statusHistory is list)
+        ? resource.data.statusHistory.size()
+        : 0;
+      let response = request.resource.data.residentResponses[oldResponseCount];
+      let history = request.resource.data.statusHistory[oldHistoryCount];
+      return (resource.data.status == 'awaiting_resident' || resource.data.status == 'needs_information')
+        && (request.resource.data.status in ['reopened', 'under_review', 'being_reviewed', 'in_progress', 'being_handled'])
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.barangay == resource.data.barangay
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.residentResponses is list
+        && request.resource.data.residentResponses.size() == oldResponseCount + 1
+        && boundedString(response.message, 3, 1000)
+        && response.userId == request.auth.uid
+        && response.date is timestamp
+        && response.attachmentUrl is string
+        && response.attachmentUrl.size() <= 2048
+        && response.attachmentStoragePath is string
+        && response.attachmentStoragePath.size() <= 500
+        && request.resource.data.statusHistory is list
+        && request.resource.data.statusHistory.size() == oldHistoryCount + 1
+        && (history.status in ['reopened', 'under_review', 'being_reviewed', 'in_progress', 'being_handled'])
+        && history.actorType == 'resident'
+        && history.actorId == request.auth.uid
+        && history.visibility == 'public'
+        && history.date is timestamp;
+    }
+
+    function isApprovedPublisher() {
+      return hasApprovedProfile()
+        && (
+          staffRole() in ['super_admin', 'mayor', 'lgu', 'barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'organization']
+          || (staffRole() == 'barangay_councilor'
+            && (!('positionCode' in profile()) || profile().positionCode == 'barangay_kagawad'))
+        );
+    }
+
+    function publisherOrganization() {
+      let organizationId = ('organizationId' in profile())
+        ? profile().organizationId
+        : request.auth.uid;
+      return get(/databases/$(database)/documents/organizations/$(organizationId)).data;
+    }
+
+    function validAnnouncementShape() {
+      return request.resource.data.contentType == 'announcement'
+        && request.resource.data.schemaVersion == 2
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.content.size() <= 2000
+        && request.resource.data.visibility in ['public', 'targeted']
+        && request.resource.data.targetBarangays is list
+        && request.resource.data.audienceKeys is list
+        && request.resource.data.priority in ['regular', 'important', 'urgent']
+        && (!('category' in request.resource.data) || (
+          request.resource.data.category is string
+          && (
+            (request.resource.data.category in ['Other Notice', 'Other Advisory', 'Other Event']
+              && request.resource.data.customCategory is string
+              && request.resource.data.customCategory.size() > 0
+              && request.resource.data.customCategory.size() <= 50)
+            || (!(request.resource.data.category in ['Other Notice', 'Other Advisory', 'Other Event'])
+              && (!('customCategory' in request.resource.data)
+                || request.resource.data.customCategory == null))
+          )
+        ));
+    }
+
+    function validAnnouncementEditShape() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let post = request.resource.data;
+      return post.contentType == 'announcement'
+        && post.schemaVersion == 2
+        && (!changed.hasAny(['title']) || boundedString(post.title, 1, 120))
+        && (!changed.hasAny(['content']) || boundedString(post.content, 1, 2000))
+        && (!changed.hasAny(['priority']) || post.priority in ['regular', 'important', 'urgent'])
+        && (!changed.hasAny(['category', 'customCategory']) || (
+          !('category' in post) || (post.category is string
+            && ((post.category in ['Other Notice', 'Other Advisory', 'Other Event']
+              && boundedString(post.customCategory, 1, 50))
+              || (!(post.category in ['Other Notice', 'Other Advisory', 'Other Event'])
+                && (!('customCategory' in post) || post.customCategory == null))))));
+    }
+
+    function validMunicipalAudience() {
+      return (
+          request.resource.data.visibility == 'public'
+          && request.resource.data.targetBarangays.size() == 0
+          && request.resource.data.targetBarangay == 'All Barangays'
+          && request.resource.data.audienceKeys == ['municipality:barili']
+        ) || (
+          request.resource.data.visibility == 'targeted'
+          && request.resource.data.targetBarangays.size() > 0
+          && request.resource.data.targetBarangays.size() <= 42
+          && !request.resource.data.audienceKeys.hasAny(['municipality:barili'])
+        );
+    }
+
+    function validLguDepartmentPublisher() {
+      let department = get(/databases/$(database)/documents/lgu_departments/$(staffDepartmentId())).data;
+      return staffDepartmentId().size() > 0
+        && department.status == 'active'
+        && request.resource.data.departmentId == staffDepartmentId()
+        && request.resource.data.publisherEntityId == staffDepartmentId()
+        && request.resource.data.publisherEntityType == 'lgu_department'
+        && request.resource.data.publisherEntityName == department.publicName;
+    }
+
+    function validBarangayAudience() {
+      return request.resource.data.visibility == 'targeted'
+        && request.resource.data.barangayId is string
+        && request.resource.data.barangayId == profile().barangayId
+        && request.resource.data.targetBarangays == [profile().barangay]
+        && request.resource.data.targetBarangay == profile().barangay
+        && request.resource.data.audienceKeys == ['barangay:' + profile().barangay];
+    }
+
+    function isOwnBarangayAnnouncement() {
+      return isApprovedBarangayOfficial()
+        && profile().barangayId is string
+        && profile().barangayId.size() > 0
+        && (!exists(/databases/$(database)/documents/access_policies/$(('barangay_' + profile().barangayId)))
+          || !('announcements' in get(/databases/$(database)/documents/access_policies/$(('barangay_' + profile().barangayId))).data.denied))
+        && resource.data.authorRole in ['barangay', 'barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor']
+        && ((('barangayId' in resource.data)
+          && resource.data.barangayId == profile().barangayId)
+          || (!('barangayId' in resource.data)
+            && resource.data.authorId == request.auth.uid
+            && resource.data.targetBarangay == profile().barangay));
+    }
+
+    function validBarangayPublishingStatus() {
+      return request.resource.data.status in ['approved', 'draft', 'scheduled'];
+    }
+
+    function validPartnerAudience() {
+      let organization = publisherOrganization();
+      return organization.status == 'verified'
+        && request.resource.data.publisherEntityId == staffOrganizationId()
+        && validMunicipalAudience();
+    }
+
+    function validMunicipalAnnouncementCreate(departmentId) {
+      let department = get(
+        /databases/$(database)/documents/lgu_departments/$(departmentId)
+      ).data;
+      return departmentId.size() > 0
+        && department.status == 'active'
+        && request.resource.data.status in ['approved', 'draft', 'scheduled']
+        && validMunicipalAudience()
+        && request.resource.data.departmentId == departmentId
+        && request.resource.data.publisherEntityId == departmentId
+        && request.resource.data.publisherEntityType == 'lgu_department'
+        && request.resource.data.publisherEntityName == department.publicName;
+    }
+
+    function validMayorAnnouncement() {
+      return request.resource.data.status in ['approved', 'draft', 'scheduled', 'archived']
+        && validMunicipalAudience()
+        && request.resource.data.departmentId == ''
+        && request.resource.data.publisherEntityId == request.auth.uid
+        && request.resource.data.publisherEntityType == 'mayor'
+        && request.resource.data.publisherEntityName == profile().name;
+    }
+
+    function validBarangayAnnouncementCreate(currentProfile) {
+      return request.resource.data.status in ['approved', 'draft', 'scheduled']
+        && request.resource.data.visibility == 'targeted'
+        && ('barangayId' in request.resource.data)
+        && request.resource.data.barangayId is string
+        && request.resource.data.barangayId == currentProfile.barangayId
+        && request.resource.data.targetBarangays == [currentProfile.barangay]
+        && request.resource.data.targetBarangay == currentProfile.barangay
+        && request.resource.data.audienceKeys == ['barangay:' + currentProfile.barangay];
+    }
+
+    function validPartnerAnnouncementCreate(organizationId) {
+      return organizationId.size() > 0
+        && request.resource.data.status in ['approved', 'draft', 'scheduled']
+        && validPartnerAudience();
+    }
+
+    function validAnnouncementCreate() {
+      let currentProfile = profile();
+      let role = staffRoleFrom(currentProfile);
+      let departmentId = ('departmentId' in currentProfile
+          && currentProfile.departmentId is string)
+        ? currentProfile.departmentId : '';
+      let organizationId = ('organizationId' in currentProfile
+          && currentProfile.organizationId is string)
+        ? currentProfile.organizationId : '';
+      return signedIn()
+        && hasApprovedProfileData(currentProfile)
+        && (role == 'mayor' || operationalAccess('announcements', true))
+        && validAnnouncementShape()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.authorRole == role
+        && (
+          (role in ['super_admin', 'lgu']
+            && validMunicipalAnnouncementCreate(departmentId))
+          || (role == 'mayor'
+            && validMayorAnnouncement())
+          || (role in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary']
+            && validBarangayAnnouncementCreate(currentProfile))
+          || (role == 'barangay_councilor'
+            && ((!('positionCode' in currentProfile)
+              || currentProfile.positionCode == 'barangay_kagawad')
+              || policyHas('granted', 'announcements'))
+            && validBarangayAnnouncementCreate(currentProfile))
+          || (role == 'organization'
+            && validPartnerAnnouncementCreate(organizationId))
+        );
+    }
+
+    function canSaveAnnouncement(postId) {
+      let post = get(/databases/$(database)/documents/posts/$(postId)).data;
+      return canUseInteractiveFeatures()
+        && profile().role is string
+        && profile().role.lower() == 'resident'
+        && post.status in ['approved', 'published']
+        && (
+          post.visibility == 'public'
+          || (post.targetBarangays is list
+            && profile().barangay is string
+            && post.targetBarangays.hasAny([profile().barangay]))
+        );
+    }
+
+    function canReadSavedAnnouncement(postId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/saved_announcements/$(postId))
+        && resource.data.status in ['approved', 'published', 'cancelled', 'archived']
+        && (
+          resource.data.visibility == 'public'
+          || (resource.data.targetBarangays is list
+            && profile().barangay is string
+            && resource.data.targetBarangays.hasAny([profile().barangay]))
+        );
+    }
+
+    function partnerCanReceiveEmergency(report) {
+      let organization = ('organizationName' in profile() && profile().organizationName is string)
+        ? profile().organizationName.lower() : '';
+      return staffRole() == 'organization'
+        && hasApprovedProfile()
+        && organization.size() > 0
+        && (
+          (report.routingKey == 'bfp'
+            && (organization.matches('.*bfp.*')
+              || organization.matches('.*fire protection.*')
+              || organization.matches('.*fire station.*')))
+          || (report.routingKey == 'pnp'
+            && (organization.matches('.*pnp.*')
+              || organization.matches('.*police.*')))
+          || (report.routingKey == 'cebeco'
+            && (organization.matches('.*cebeco.*')
+              || organization.matches('.*electric cooperative.*')))
+          || (report.routingKey == 'health'
+            && (organization.matches('.*health.*')
+              || organization.matches('.*medical.*')
+              || organization.matches('.*hospital.*')
+              || organization.matches('.*ambulance.*')))
+          || (report.routingKey == 'mdrrmo'
+            && (organization.matches('.*mdrrmo.*')
+              || organization.matches('.*disaster.*')
+              || organization.matches('.*rescue.*')))
+        );
+    }
+
+    function responderCanAccessEmergency(report) {
+      return hasApprovedProfile()
+        && (
+          (isApprovedBarangayOfficial()
+            && profile().barangay.lower() == report.barangay.lower())
+          || partnerCanReceiveEmergency(report)
+        );
+    }
+
+    // Registration OTP challenges are server-only. Callable Functions use the
+    // Admin SDK and are not affected by these client rules.
+    match /_registration_email_otps/{userId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+      // Bootstrap reads must not call isApprovedAdmin(), because that helper
+      // reads this same profile document to establish the administrator role.
+      // Sensitive verification records are listed and reviewed only through
+      // callable Functions that enforce stable BarangayId scoping. Residents
+      // may still read their own profile and municipal administrators retain
+      // institutional account-management access.
+      allow get: if isOwner(userId)
+        || isApprovedAdmin()
+        || (isApprovedLguStaff() && isOwnLguDepartmentRecord(resource.data))
+        || isOwnOrganizationRecord(resource.data)
+        || (signedIn() && ('role' in resource.data) && resource.data.role in [
+              'barangay', 'barangay_captain', 'barangay_vice_captain',
+              'barangay_secretary', 'barangay_councilor', 'lgu', 'mayor',
+              'organization', 'partner'
+            ]);
+      allow list: if isApprovedAdmin()
+        || (isApprovedLguStaff() && isOwnLguDepartmentRecord(resource.data))
+        || isOwnOrganizationRecord(resource.data);
+
+      // Resident profiles are created by createResidentProfile so a client
+      // cannot forge its role or pair a barangay name with another ID.
+      allow create: if false;
+
+      allow update: if (isSuperAdmin()
+          && !changesResidentVerificationDecision()
+          && (resource.data.role != 'resident'
+            || !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              'status', 'accountStatus', 'restrictionStatus', 'restrictedBy', 'restrictedAt',
+              'restrictionReason', 'restrictionNotes', 'restrictionEndDate', 'restrictionPreviousStatus',
+              'restrictionPreviousAccountStatus', 'unrestrictedBy', 'unrestrictedAt'
+            ])))
+        || (isOwner(userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['fcmToken', 'lastLoginAt', 'lastActiveAt', 'loginHistory'])
+          && (!('fcmToken' in request.resource.data)
+            || request.resource.data.fcmToken is string))
+        || (isOwner(userId)
+          && resource.data.role is string
+          && resource.data.role.lower() == 'resident'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'contactNumber', 'address', 'birthDate', 'updatedAt'])
+          && boundedString(request.resource.data.name, 2, 100)
+          && validPhilippineMobile(request.resource.data.contactNumber)
+          && boundedString(request.resource.data.address, 2, 200)
+          && request.resource.data.birthDate is string
+          && request.resource.data.birthDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
+        || (isOwner(userId)
+          && resource.data.role is string
+          && resource.data.role.lower() == 'resident'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['profilePhotoUrl', 'profilePhotoStoragePath', 'updatedAt'])
+          && (
+            (!('profilePhotoUrl' in request.resource.data)
+              && !('profilePhotoStoragePath' in request.resource.data))
+            || (boundedString(request.resource.data.profilePhotoUrl, 1, 2048)
+              && request.resource.data.profilePhotoStoragePath
+                == 'profile_photos/' + userId + '/avatar')
+          ))
+        || (isOwner(userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['email', 'updatedAt'])
+          && request.resource.data.email is string
+          && request.auth.token.email is string
+          && request.resource.data.email == request.auth.token.email)
+        || (isOwner(userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'contactNumber', 'email', 'address', 'coverageArea', 'photoUrl', 'profilePhotoUrl', 'avatarUrl', 'profilePicture', 'updatedAt'])
+          && (!('name' in request.resource.data) || boundedString(request.resource.data.name, 1, 100))
+          && (!('contactNumber' in request.resource.data) || (request.resource.data.contactNumber is string && request.resource.data.contactNumber.size() >= 7 && request.resource.data.contactNumber.size() <= 30))
+          && (!('email' in request.resource.data) || request.resource.data.email == resource.data.email || (request.resource.data.email is string && request.auth.token.email is string && request.resource.data.email.lower() == request.auth.token.email.lower()))
+          && (!('address' in request.resource.data) || boundedString(request.resource.data.address, 1, 240))
+          && (!('coverageArea' in request.resource.data) || boundedString(request.resource.data.coverageArea, 1, 240))
+          && (!('photoUrl' in request.resource.data) || boundedString(request.resource.data.photoUrl, 0, 2048))
+          && (!('profilePhotoUrl' in request.resource.data) || boundedString(request.resource.data.profilePhotoUrl, 0, 2048))
+          && (!('avatarUrl' in request.resource.data) || boundedString(request.resource.data.avatarUrl, 0, 2048))
+          && (!('profilePicture' in request.resource.data) || boundedString(request.resource.data.profilePicture, 0, 2048)))
+        ;
+
+      match /saved_announcements/{savedAnnouncementId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.keys().hasAll(['announcementId', 'savedAt'])
+          && request.resource.data.keys().hasOnly(['announcementId', 'savedAt'])
+          && request.resource.data.announcementId is string
+          && request.resource.data.announcementId == savedAnnouncementId
+          && request.resource.data.savedAt is timestamp
+          && request.resource.data.savedAt == request.time
+          && canSaveAnnouncement(savedAnnouncementId);
+        allow delete: if isOwner(userId);
+      }
+
+      match /marketplace_favorites/{itemId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.keys().hasAll(['itemId', 'savedAt'])
+          && request.resource.data.keys().hasOnly(['itemId', 'savedAt'])
+          && request.resource.data.itemId == itemId
+          && request.resource.data.savedAt is timestamp
+          && request.resource.data.savedAt == request.time
+          && exists(/databases/$(database)/documents/marketplace/$(itemId));
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /lgu_departments/{departmentId} {
+      allow read: if isApprovedStaff();
+      // Department mutations use a callable Function so the active-account
+      // guard and immutable audit entry are committed together.
+      allow create, update, delete: if false;
+    }
+
+    match /access_policies/{policyId} {
+      allow get: if isApprovedAdmin()
+        || (hasApprovedProfile() && actorAccessPolicyId() == policyId);
+      allow list: if isApprovedAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /verification_queue_versions/{barangayId} {
+      allow read: if canVerifyBarangayResidents()
+        && profile().barangayId == barangayId;
+      allow create, update, delete: if false;
+    }
+
+    // Recipient configuration and protected routing fields are exposed only
+    // through validated callable functions.
+    match /concern_recipients/{recipientId} {
+      allow read, write: if false;
+    }
+
+    match /public_concern_summaries/{submissionId} {
+      allow get, list: if hasApprovedProfile()
+        && staffRole() == 'resident'
+        && profile().verificationStatus in ['verified', 'approved']
+        && resource.data.visibility == 'public'
+        && (('verifiedBarangayId' in profile())
+          ? profile().verifiedBarangayId == resource.data.barangayId
+          : profile().barangayId == resource.data.barangayId);
+      allow write: if false;
+    }
+
+    // Concern moderation records are available only through scoped callable Functions.
+    match /concern_flags/{flagId} {
+      allow read, write: if false;
+    }
+
+    match /submissions/{submissionId} {
+      allow create: if false;
+      allow get: if resource == null || (('kind' in resource.data && resource.data.kind == 'complaint')
+        ? canReadComplaint(resource.data)
+        : (isApprovedAdmin()
+        || isApprovedMayor()
+        || isOwnItDepartmentConcern(resource.data)
+        || isOwnLguDepartmentConcern(resource.data)
+        || isOwnBarangayConcern(resource.data)
+        || canReadRoutedConcern(resource.data)
+        || isOwner(resource.data.userId)
+        || ('createdBy' in resource.data && isOwner(resource.data.createdBy))
+        || (('reporterIds' in resource.data) && (resource.data.reporterIds is list) && (request.auth.uid in resource.data.reporterIds))
+        || (signedIn() && !isApprovedAdmin() && !isApprovedMayor()
+          && operationalAccess('concerns', true)
+          && resource.data.receiverAccountId == request.auth.uid
+          && (!('visibility' in resource.data) || resource.data.visibility == 'public'))));
+      allow list: if (signedIn() && (resource.data.userId == request.auth.uid
+        || ('createdBy' in resource.data && resource.data.createdBy == request.auth.uid)
+        || ('reporterIds' in resource.data && resource.data.reporterIds is list && request.auth.uid in resource.data.reporterIds)
+        || (resource.data.recipientType == 'barangay' && canReadComplaintOffice(resource.data))))
+        || (('kind' in resource.data && resource.data.kind == 'complaint')
+          ? canReadComplaint(resource.data)
+          : (isApprovedAdmin()
+        || isApprovedMayor()
+        || isOwnItDepartmentConcern(resource.data)
+        || isOwnLguDepartmentConcern(resource.data)
+        || isOwnBarangayConcern(resource.data)
+        || canReadRoutedConcern(resource.data)
+        || (signedIn() && (
+          isOwner(resource.data.userId)
+          || ('createdBy' in resource.data && isOwner(resource.data.createdBy))
+          || (('reporterIds' in resource.data) && (resource.data.reporterIds is list) && (request.auth.uid in resource.data.reporterIds))
+          || (!isApprovedAdmin() && !isApprovedMayor()
+            && operationalAccess('concerns', true)
+            && resource.data.receiverAccountId == request.auth.uid
+            && (!('visibility' in resource.data) || resource.data.visibility == 'public'))
+        ))));
+      allow update: if ('kind' in resource.data && resource.data.kind == 'complaint')
+        ? false : ((isOwnItDepartmentConcern(resource.data)
+          && request.resource.data.recipientDepartmentId == resource.data.recipientDepartmentId
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'priority', 'assignedToName', 'assignedTo', 'assignedAt', 'handledBy', 'handledByName', 'handlingStartedAt', 'handlingNote', 'progressNote', 'requestedInfoMessage', 'requestedInfoBy', 'requestedInfoAt', 'resolutionSummary', 'resolvedBy', 'resolvedByName', 'resolvedAt', 'closedAt', 'updatedAt', 'updatedBy', 'statusHistory', 'summons']))
+        || (isOwnLguDepartmentConcern(resource.data)
+          && request.resource.data.recipientDepartmentId == resource.data.recipientDepartmentId
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'priority', 'assignedToName', 'assignedTo', 'assignedAt', 'handledBy', 'handledByName', 'handlingStartedAt', 'handlingNote', 'progressNote', 'requestedInfoMessage', 'requestedInfoBy', 'requestedInfoAt', 'resolutionSummary', 'resolvedBy', 'resolvedByName', 'resolvedAt', 'closedAt', 'updatedAt', 'updatedBy', 'statusHistory', 'summons']))
+        || (isOwnBarangayConcern(resource.data)
+          && (!('schemaVersion' in resource.data) || resource.data.schemaVersion < 4
+            || resource.data.leadOrganizationId == '')
+          && request.resource.data.barangayId == resource.data.barangayId
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'priority', 'department', 'assignedToName', 'assignedTo', 'assignedAt', 'handledBy', 'handledByName', 'handlingStartedAt', 'handlingNote', 'progressNote', 'requestedInfoMessage', 'requestedInfoBy', 'requestedInfoAt', 'resolutionSummary', 'resolvedBy', 'resolvedByName', 'resolvedAt', 'closedAt', 'updatedAt', 'updatedBy', 'statusHistory', 'summons']))
+        || (signedIn()
+          && operationalAccess('concerns', true)
+          && resource.data.receiverAccountId == request.auth.uid
+          && (!('schemaVersion' in resource.data) || resource.data.schemaVersion < 4)
+          && request.resource.data.receiverAccountId == resource.data.receiverAccountId
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'priority', 'assignedToName', 'assignedTo', 'assignedAt', 'handledBy', 'handledByName', 'handlingStartedAt', 'handlingNote', 'progressNote', 'requestedInfoMessage', 'requestedInfoBy', 'requestedInfoAt', 'resolutionSummary', 'resolvedBy', 'resolvedByName', 'resolvedAt', 'closedAt', 'updatedAt', 'updatedBy', 'statusHistory', 'summons']))
+        || (isMatchingOrganizationConcern(resource.data)
+          && resource.data.leadOrganizationId == staffOrganizationId()
+          && request.resource.data.leadOrganizationId == resource.data.leadOrganizationId
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'priority', 'assignedToName', 'assignedTo', 'assignedAt', 'handledBy', 'handledByName', 'handlingStartedAt', 'handlingNote', 'progressNote', 'requestedInfoMessage', 'requestedInfoBy', 'requestedInfoAt', 'resolutionSummary', 'resolvedBy', 'resolvedByName', 'resolvedAt', 'closedAt', 'updatedAt', 'updatedBy', 'statusHistory', 'summons']))
+        || (isOwnOrganizationRecord(resource.data)
+          && operationalAccess('concerns', true)
+          && (!('schemaVersion' in resource.data) || resource.data.schemaVersion < 4)
+          && request.resource.data.organizationId == resource.data.organizationId
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'priority', 'assignedToName', 'assignedTo', 'assignedAt', 'handledBy', 'handledByName', 'handlingStartedAt', 'handlingNote', 'progressNote', 'requestedInfoMessage', 'requestedInfoBy', 'requestedInfoAt', 'resolutionSummary', 'resolvedBy', 'resolvedByName', 'resolvedAt', 'closedAt', 'updatedAt', 'updatedBy', 'statusHistory', 'summons']))
+        || ((isOwner(resource.data.userId) || ('createdBy' in resource.data && isOwner(resource.data.createdBy))
+             || (('reporterIds' in resource.data) && (resource.data.reporterIds is list) && (request.auth.uid in resource.data.reporterIds)))
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'updatedAt', 'updatedBy', 'residentResponses', 'statusHistory'])
+          && validResidentConcernReply()));
+
+      match /internal_notes/{noteId} {
+        allow read: if isApprovedAdmin()
+          || isApprovedMayor()
+          || isOwnItDepartmentConcern(
+            get(/databases/$(database)/documents/submissions/$(submissionId)).data
+          )
+          || isOwnLguDepartmentConcern(
+            get(/databases/$(database)/documents/submissions/$(submissionId)).data
+          )
+          || isOwnBarangayConcern(
+            get(/databases/$(database)/documents/submissions/$(submissionId)).data
+          )
+          || canReadStaffOrganizationConcern(
+            get(/databases/$(database)/documents/submissions/$(submissionId)).data
+          );
+        allow update, delete: if false;
+      }
+
+      match /reports/{reporterId} {
+        allow get: if isApprovedAdmin()
+          || isApprovedMayor()
+          || isOwnItDepartmentConcern(get(/databases/$(database)/documents/submissions/$(submissionId)).data)
+          || isOwner(reporterId)
+          || isOwnLguDepartmentConcern(get(/databases/$(database)/documents/submissions/$(submissionId)).data)
+          || isOwnBarangayConcern(get(/databases/$(database)/documents/submissions/$(submissionId)).data)
+          || isMatchingOrganizationConcern(get(/databases/$(database)/documents/submissions/$(submissionId)).data);
+        allow list: if isApprovedAdmin()
+          || isApprovedMayor()
+          || isOwnItDepartmentConcern(get(/databases/$(database)/documents/submissions/$(submissionId)).data)
+          || isOwnLguDepartmentConcern(get(/databases/$(database)/documents/submissions/$(submissionId)).data)
+          || isOwnBarangayConcern(get(/databases/$(database)/documents/submissions/$(submissionId)).data)
+          || isMatchingOrganizationConcern(get(/databases/$(database)/documents/submissions/$(submissionId)).data);
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isOwner(resource.data.userId)
+        || (isApprovedAdmin()
+          && (!('type' in resource.data) || resource.data.type != 'concern_update'
+            || (resource.data.referenceId is string
+              && isOwnItDepartmentConcern(get(/databases/$(database)/documents/submissions/$(resource.data.referenceId)).data))));
+      allow create: if (('type' in request.resource.data)
+          && request.resource.data.type == 'concern_update'
+          && request.resource.data.referenceId is string
+          && canNotifyConcernRecipient(request.resource.data.referenceId, request.resource.data.userId))
+        || ((!('type' in request.resource.data) || request.resource.data.type != 'concern_update') && (isApprovedAdmin()
+        || (isApprovedBarangayOfficial()
+          && request.resource.data.userId is string
+          && get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.barangay == profile().barangay)
+        || (isApprovedPartner()
+          && request.resource.data.type == 'emergency_update'
+          && request.resource.data.referenceId is string
+          && get(/databases/$(database)/documents/emergency_reports/$(request.resource.data.referenceId)).data.reporterId == request.resource.data.userId
+          && partnerCanReceiveEmergency(get(/databases/$(database)/documents/emergency_reports/$(request.resource.data.referenceId)).data))));
+      allow delete: if isApprovedAdmin();
+      allow update: if isApprovedAdmin()
+        || (isOwner(resource.data.userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['read', 'readAt']));
+    }
+
+    match /device_tokens/{deviceId} {
+      allow read: if false;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 20
+        && request.resource.data.active == true;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 20
+        && request.resource.data.active == true;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /resident_emergency_statuses/{statusId} {
+      allow read: if signedIn() && resource.data.residentId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /barangay_profiles/{barangayId} {
+      allow read: if signedIn();
+      allow write: if isApprovedAdmin()
+        || (isApprovedBarangayOfficial() && (
+          profile().barangayId == barangayId
+          || ('barangay' in profile() && profile().barangay.lower() == barangayId.lower())
+        ));
+    }
+
+    match /posts/{postId} {
+      allow read: if isApprovedAdmin();
+      allow read: if isOwnLguDepartmentRecord(resource.data)
+        && operationalAccess('announcements', true);
+      allow read: if isApprovedBarangayOfficial()
+        && operationalAccess('announcements', true)
+        && profile().barangayId is string
+        && profile().barangayId.size() > 0
+        && resource.data.barangayId is string
+        && resource.data.barangayId == profile().barangayId;
+      allow get: if canReadSavedAnnouncement(postId);
+      allow get: if signedIn()
+        && resource.data.status == 'approved'
+        && ('visibility' in resource.data)
+        && resource.data.visibility == 'public';
+      allow get: if signedIn()
+        && resource.data.status == 'approved'
+        && ('audienceKeys' in resource.data)
+        && resource.data.audienceKeys is list
+        && ('barangay:' + profile().barangay) in resource.data.audienceKeys;
+      allow read: if signedIn()
+        && ('authorId' in resource.data)
+        && resource.data.authorId == request.auth.uid
+        && staffRole() in ['resident', 'mayor'];
+      allow read: if isApprovedPartner()
+        && operationalAccess('announcements', true)
+        && staffOrganizationId().size() > 0
+        && resource.data.publisherEntityId is string
+        && resource.data.publisherEntityId == staffOrganizationId();
+      allow create: if validAnnouncementCreate();
+      function mayorPostUpdate() {
+        return isApprovedMayor()
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.authorId == resource.data.authorId
+        && request.resource.data.authorRole == 'mayor'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'content', 'category', 'customCategory', 'priority', 'priorityExpiresAt', 'expiresAt',
+          'announcementType', 'addToCalendar', 'eventStartAt', 'eventEndAt',
+          'eventLocation', 'eventAllDay', 'calendarEventId', 'eventCancelled',
+          'cta', 'imageUrl', 'imageStoragePath', 'revision', 'notificationRequested',
+          'updatedAt', 'status', 'archivedAt', 'archivedBy', 'publishAt',
+          'authorPhotoUrl', 'authorProfilePhotoUrl', 'publisherPhotoUrl'
+        ])
+        && validAnnouncementShape()
+        && validMayorAnnouncement();
+      }
+      allow delete: if isApprovedAdmin();
+      allow delete: if signedIn()
+        && ('authorId' in resource.data)
+        && resource.data.authorId == request.auth.uid;
+      allow delete: if isApprovedMayor()
+        && resource.data.contentType == 'announcement'
+        && resource.data.authorId == request.auth.uid
+        && resource.data.authorRole == 'mayor';
+      function lguPostUpdate() {
+        return isOwnLguDepartmentRecord(resource.data)
+        && operationalAccess('announcements', true)
+        && request.resource.data.departmentId == resource.data.departmentId
+        && request.resource.data.publisherEntityId == resource.data.publisherEntityId
+        && request.resource.data.publisherEntityType == resource.data.publisherEntityType
+        && request.resource.data.publisherEntityName == resource.data.publisherEntityName
+        && request.resource.data.authorId == resource.data.authorId
+        && request.resource.data.authorRole == resource.data.authorRole
+        && request.resource.data.status in ['approved', 'draft', 'scheduled', 'archived']
+        && validAnnouncementEditShape()
+        && validMunicipalAudience();
+      }
+      allow delete: if isOwnLguDepartmentRecord(resource.data)
+        && operationalAccess('announcements', true);
+      function barangayPostTitleEdit() {
+        return isOwnBarangayAnnouncement()
+          && resource.data.status in ['approved', 'draft', 'scheduled']
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'updatedAt'])
+          && boundedString(request.resource.data.title, 1, 120);
+      }
+      function barangayPostPublish() {
+        return resource.data.status in ['draft', 'scheduled']
+          && request.resource.data.status == 'approved'
+          && isOwnBarangayAnnouncement()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+      }
+      function barangayPostEdit() {
+        return isOwnBarangayAnnouncement()
+        && resource.data.status in ['approved', 'draft', 'scheduled']
+          && request.resource.data.status in ['approved', 'draft', 'scheduled']
+          && validAnnouncementEditShape()
+          && validBarangayAudience()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'title', 'content', 'category', 'customCategory', 'priority', 'priorityExpiresAt', 'expiresAt',
+            'announcementType', 'addToCalendar', 'eventStartAt', 'eventEndAt',
+            'eventLocation', 'eventAllDay', 'calendarEventId', 'eventCancelled',
+            'cta', 'imageUrl', 'imageStoragePath', 'revision', 'notificationRequested',
+            'updatedAt', 'barangayId', 'status', 'publishAt', 'contentType', 'schemaVersion',
+            'visibility', 'targetBarangay', 'targetBarangays', 'audienceKeys',
+            'authorPhotoUrl', 'authorProfilePhotoUrl', 'publisherPhotoUrl'
+          ]);
+      }
+      function barangayPostArchive() {
+        return request.resource.data.status == 'archived'
+        && resource.data.status in ['approved', 'draft', 'scheduled']
+        && isOwnBarangayAnnouncement()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'notificationRequested', 'archivedAt', 'archivedBy', 'updatedAt'
+        ]);
+      }
+      function barangayPostRestore() {
+        return request.resource.data.status in ['draft', 'scheduled']
+        && resource.data.status == 'archived'
+        && isOwnBarangayAnnouncement()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'archivedAt', 'archivedBy', 'updatedAt'
+        ]);
+      }
+      allow delete: if isOwnBarangayAnnouncement();
+      allow delete: if isApprovedPartner()
+        && operationalAccess('announcements', true)
+        && resource.data.contentType == 'announcement'
+        && staffOrganizationId().size() > 0
+        && resource.data.publisherEntityId == staffOrganizationId()
+        && resource.data.authorRole == 'organization';
+      function partnerPostUpdate() {
+        return isApprovedPartner()
+        && operationalAccess('announcements', true)
+        && staffOrganizationId().size() > 0
+        && resource.data.publisherEntityId == staffOrganizationId()
+        && request.resource.data.publisherEntityId == resource.data.publisherEntityId
+        && request.resource.data.authorRole == 'organization'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'content', 'category', 'customCategory', 'priority', 'priorityExpiresAt', 'expiresAt',
+          'announcementType', 'addToCalendar', 'eventStartAt', 'eventEndAt',
+          'eventLocation', 'eventAllDay', 'calendarEventId', 'eventCancelled',
+          'cta', 'imageUrl', 'imageStoragePath', 'revision', 'notificationRequested',
+          'updatedAt', 'status', 'archivedAt', 'archivedBy', 'publishAt',
+          'authorPhotoUrl', 'authorProfilePhotoUrl', 'publisherPhotoUrl'
+        ])
+        && request.resource.data.status in ['approved', 'draft', 'scheduled', 'archived']
+        && validAnnouncementShape()
+        && validPartnerAudience();
+      }
+      function authorPostArchive() {
+        return request.resource.data.status == 'archived'
+        && resource.data.status in ['approved', 'draft', 'scheduled']
+        && ('authorId' in resource.data)
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'notificationRequested', 'archivedAt', 'archivedBy', 'updatedAt'
+        ]);
+      }
+      function authorPostRestore() {
+        return request.resource.data.status in ['draft', 'scheduled']
+        && resource.data.status == 'archived'
+        && ('authorId' in resource.data)
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'archivedAt', 'archivedBy', 'updatedAt'
+        ]);
+      }
+      function authorPostEdit() {
+        return signedIn()
+        && ('authorId' in resource.data)
+        && resource.data.authorId == request.auth.uid
+        && resource.data.status in ['approved', 'draft', 'scheduled']
+        && request.resource.data.status in ['approved', 'draft', 'scheduled']
+        && validAnnouncementEditShape();
+      }
+      function canUpdateAnnouncement() {
+        let role = staffRole();
+        return role == 'super_admin' ? isApprovedAdmin()
+        : authorPostArchive() ? true
+        : authorPostRestore() ? true
+        : authorPostEdit() ? true
+        : role == 'mayor' ? mayorPostUpdate()
+        : role == 'lgu' ? lguPostUpdate()
+        : role in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'barangay_councilor']
+          ? (barangayPostArchive() || barangayPostRestore() || barangayPostEdit()
+            || barangayPostTitleEdit() || barangayPostPublish())
+        : role == 'organization' ? partnerPostUpdate() : false;
+      }
+      allow update: if canUpdateAnnouncement();
+    }
+
+    match /announcement_feeds/{audienceKey}/posts/{postId} {
+      allow read: if signedIn()
+        && (
+          audienceKey == 'municipality:barili'
+          || audienceKey == 'barangay:' + profile().barangay
+        );
+      allow write: if false;
+    }
+
+    match /alerts/{alertId} {
+      allow read: if signedIn();
+      // Emergency mutations use authorized callable Cloud Functions so role,
+      // audience, state transitions, audit logging, and reminders are enforced
+      // together on the trusted backend.
+      allow create, update, delete: if false;
+    }
+
+    match /emergency_dispatches/{dispatchId} {
+      allow get, list: if isApprovedAdmin()
+        || (isApprovedPartner() && staffOrganizationId().size() > 0
+          && (resource.data.sourceOrganizationId == staffOrganizationId()
+            || (resource.data.destinationOrganizationId == staffOrganizationId()
+              && operationalAccess('emergencies:direct:receive', true))));
+      allow create, update, delete: if false;
+    }
+
+    match /emergency_contacts/{contactId} {
+      allow read: if isApprovedStaff();
+      allow create, update, delete: if false;
+    }
+
+    match /organizations/{organizationId} {
+      allow read: if (signedIn() && staffRole() != 'organization')
+        || (isApprovedPartner() && organizationId == staffOrganizationId());
+      allow write: if isApprovedAdmin();
+      allow update: if isApprovedPartner()
+        && organizationId == staffOrganizationId()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'contactPerson', 'contactNumber', 'email', 'address', 'updatedAt', 'updatedBy',
+          'logoUrl', 'photoUrl', 'profilePhotoUrl', 'profilePicture'
+        ])
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    match /staff_account_requests/{requestId} {
+      allow get: if isApprovedAdmin()
+        || (('createdUserId' in resource.data) && isOwner(resource.data.createdUserId))
+        || ((!('creationSource' in resource.data)
+            || !(resource.data.creationSource in ['organization_self_registration', 'staff_self_registration']))
+          && (isOwnLguDepartmentRecord(resource.data)
+            || (canManageBarangay()
+              && resource.data.barangayId is string
+              && resource.data.barangayId == profile().barangayId)
+            || isOwnOrganizationRecord(resource.data)));
+      // Staff lists query only internal requests; self-registration proofs stay
+      // available solely to the municipal administrator and the applicant.
+      allow list: if isApprovedAdmin()
+        || (resource.data.creationSource == 'staff_request'
+          && (isOwnLguDepartmentRecord(resource.data)
+            || (canManageBarangay()
+              && resource.data.barangayId == profile().barangayId)
+            || isOwnOrganizationRecord(resource.data)));
+      allow create, update, delete: if false;
+    }
+
+    match /system/{documentId} {
+      allow read: if signedIn();
+      allow write: if isApprovedAdmin();
+    }
+
+    match /audit_logs/{entryId} {
+      allow get: if (isApprovedAdmin()
+          && (!('targetType' in resource.data) || resource.data.targetType != 'submission' || canReadItConcernAudit(resource.data)))
+        || isOwnLguDepartmentRecord(resource.data)
+        || isOwnOrganizationRecord(resource.data);
+      allow list: if (isApprovedAdmin() && resource.data.targetType != 'submission')
+        || isOwnLguDepartmentRecord(resource.data)
+        || isOwnOrganizationRecord(resource.data);
+      allow create: if isApprovedStaff()
+        && request.resource.data.actorId == request.auth.uid
+        && (staffRole() != 'lgu'
+          || (request.resource.data.departmentId is string
+            && request.resource.data.departmentId == staffDepartmentId()))
+        && (staffRole() != 'organization'
+          || (request.resource.data.organizationId is string
+            && request.resource.data.organizationId == staffOrganizationId()));
+      allow update, delete: if false;
+    }
+
+    match /document_requests/{requestId} {
+      allow create: if canUseInteractiveFeatures()
+        && request.resource.data.userId == request.auth.uid
+        && boundedString(request.resource.data.applicantName, 2, 100)
+        && boundedString(request.resource.data.type, 1, 100)
+        && request.resource.data.status == 'Pending'
+        && request.resource.data.paymentStatus == 'Unpaid'
+        && (!('notes' in request.resource.data)
+          || request.resource.data.notes == null
+          || (request.resource.data.notes is string
+            && request.resource.data.notes.size() <= 300));
+      allow read: if isApprovedAdmin() || isOwner(resource.data.userId);
+      allow update: if isApprovedAdmin();
+    }
+
+    match /users/{userId}/calendar_entries/{eventId} {
+      function validAnnouncementLink() {
+        let entry = request.resource.data;
+        let source = get(/databases/$(database)/documents/calendar_events/$(eventId)).data;
+        return entry.keys().hasOnly(['userId', 'eventId', 'sourceAnnouncementId', 'createdAt'])
+          && entry.userId == userId && entry.eventId == eventId
+          && entry.sourceAnnouncementId == source.sourceId
+          && source.sourceType == 'announcement'
+          && source.status != 'cancelled'
+          && source.startAt is timestamp && source.endAt > source.startAt
+          && (source.visibility == 'public'
+            || (source.visibility == 'barangay' && source.targetBarangay == profile().barangay))
+          && entry.createdAt == request.time;
+      }
+      allow read, delete: if isOwner(userId);
+      allow create: if isOwner(userId) && canUseInteractiveFeatures() && validAnnouncementLink();
+      allow update: if false;
+    }
+
+    match /calendar_events/{eventId} {
+      function canReadCalendarEvent() {
+        let event = resource.data;
+        return signedIn()
+          && (
+            event.visibility == 'public'
+            || (event.visibility == 'barangay'
+              && event.targetBarangay == profile().barangay)
+            || (event.visibility == 'private'
+              && request.auth.uid in event.targetUserIds)
+          );
+      }
+
+      function validCalendarCreate() {
+        return validCalendarEvent()
+          && request.resource.data.id == eventId
+          && validCalendarAudience()
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && (request.resource.data.status != 'scheduled'
+            || request.resource.data.startAt >= request.time - duration.value(1, 'm')
+            || (request.resource.data.allDay == true && request.resource.data.endAt > request.time));
+      }
+
+      function validCalendarUpdate() {
+        return validCalendarEvent()
+          && request.resource.data.id == eventId
+          && validCalendarAudience()
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.sourceType == resource.data.sourceType
+          && request.resource.data.sourceId == resource.data.sourceId;
+      }
+
+      function validBarangayCalendarScope() {
+        return request.resource.data.visibility == 'barangay'
+          && request.resource.data.targetBarangay == profile().barangay
+          && request.resource.data.audienceKeys == ['barangay:' + profile().barangay];
+      }
+
+      function validOrganizationCalendarScope() {
+        let post = getAfter(/databases/$(database)/documents/posts/$(request.resource.data.sourceId)).data;
+        return isApprovedPartner()
+          && request.resource.data.sourceType == 'announcement'
+          && post.publisherEntityId == staffOrganizationId()
+          && (request.resource.data.visibility in ['public', 'barangay']);
+      }
+
+      function validMayorCalendarScope() {
+        let post = getAfter(/databases/$(database)/documents/posts/$(request.resource.data.sourceId)).data;
+        return isApprovedMayor()
+          && request.resource.data.sourceType == 'announcement'
+          && request.resource.data.createdBy == request.auth.uid
+          && post.authorId == request.auth.uid
+          && post.authorRole == 'mayor'
+          && post.publisherEntityType == 'mayor';
+      }
+
+      allow read: if canReadCalendarEvent()
+        || (isApprovedAdmin() && resource.data.visibility != 'private');
+      allow create: if validCalendarCreate() && (
+        (validPersonalCalendarEvent() && canUseInteractiveFeatures())
+        || (validOfficialCalendarEvent() && (
+          isApprovedAdmin()
+          || validMayorCalendarScope()
+          || (validBarangayCalendarScope() && isApprovedBarangayOfficial()
+            && (request.resource.data.sourceType != 'announcement'
+              || operationalAccess('announcements', true)))
+          || (validOrganizationCalendarScope() && operationalAccess('announcements', true))
+        ))
+      );
+      allow update: if validCalendarUpdate() && (
+        (validPersonalCalendarEvent()
+          && resource.data.createdBy == request.auth.uid
+          && canUseInteractiveFeatures())
+        || (validOfficialCalendarEvent() && (
+          (resource.data.visibility != 'private' && isApprovedAdmin())
+          || validMayorCalendarScope()
+          || (resource.data.visibility == 'barangay'
+          && resource.data.targetBarangay == profile().barangay
+          && validBarangayCalendarScope() && isApprovedBarangayOfficial()
+          && (request.resource.data.sourceType != 'announcement'
+            || operationalAccess('announcements', true)))
+          || (validOrganizationCalendarScope() && operationalAccess('announcements', true))
+        ))
+      );
+      allow delete: if isApprovedAdmin()
+        || (canUseInteractiveFeatures()
+          && resource.data.visibility == 'private'
+          && resource.data.sourceType == 'manual'
+          && resource.data.category == 'personal'
+          && resource.data.createdBy == request.auth.uid);
+    }
+
+    match /marketplace/{itemId} {
+      allow read: if signedIn();
+      allow create: if canUseInteractiveFeatures()
+        && request.resource.data.sellerId == request.auth.uid
+        // A newly posted item is never sold automatically. Only its seller or
+        // an approved administrator may change the lifecycle status later.
+        && request.resource.data.status == 'Available'
+        && validMarketplaceItem();
+      allow update: if isApprovedAdmin()
+        || (canUseInteractiveFeatures()
+          && resource.data.sellerId == request.auth.uid
+          && request.resource.data.sellerId == resource.data.sellerId
+          && request.resource.data.status in [
+            'Available', 'Reserved', 'Sold', 'Unavailable'
+          ]
+          && (validMarketplaceItem()
+            // Preserve status controls for listings created before the
+            // current validation schema without allowing any other legacy
+            // field to be changed at the same time.
+            || request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'statusUpdatedAt'])));
+      allow delete: if isApprovedAdmin()
+        || (canUseInteractiveFeatures() && resource.data.sellerId == request.auth.uid);
+    }
+
+    match /marketplace_conversations/{conversationId} {
+      allow create: if canUseInteractiveFeatures()
+        && request.resource.data.buyerId == request.auth.uid
+        && request.resource.data.buyerId != request.resource.data.sellerId
+        && request.resource.data.status == 'pending'
+        && request.resource.data.initialMessage is string
+        && request.resource.data.initialMessage.size() > 0
+        && request.resource.data.initialMessage.size() <= 500
+        && request.resource.data.participantIds is list
+        && request.resource.data.participantIds.size() == 2
+        && request.resource.data.participantIds.hasAll([
+          request.resource.data.buyerId,
+          request.resource.data.sellerId
+        ])
+        && get(/databases/$(database)/documents/marketplace/$(request.resource.data.itemId)).data.sellerId
+          == request.resource.data.sellerId
+        && (!('status' in get(/databases/$(database)/documents/marketplace/$(request.resource.data.itemId)).data)
+          || get(/databases/$(database)/documents/marketplace/$(request.resource.data.itemId)).data.status.lower()
+            in ['available', 'limited stock']);
+      allow get: if signedIn()
+        && (resource == null
+          || resource.data.buyerId == request.auth.uid
+          || resource.data.sellerId == request.auth.uid
+          || (resource.data.participantIds is list
+            && resource.data.participantIds.hasAny([request.auth.uid])));
+      allow list: if signedIn()
+        && (resource.data.buyerId == request.auth.uid
+          || resource.data.sellerId == request.auth.uid
+          || (resource.data.participantIds is list
+            && resource.data.participantIds.hasAny([request.auth.uid])));
+      allow update: if canUseInteractiveFeatures() && (
+        // Only the seller may accept or decline a pending buyer request.
+        (resource.data.sellerId == request.auth.uid
+          && (!('status' in resource.data) || resource.data.status == 'pending')
+          && request.resource.data.status in ['accepted', 'declined']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'updatedAt', 'acceptedAt', 'declinedAt'
+          ]))
+        ||
+        // Either participant may update chat preview, unread counts, or mark read.
+        ((resource.data.status == 'accepted'
+            || (resource.data.status == 'pending' && resource.data.buyerId == request.auth.uid))
+          && request.resource.data.status == resource.data.status
+          && resource.data.participantIds is list
+          && resource.data.participantIds.hasAny([request.auth.uid])
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['lastMessage', 'updatedAt', 'buyerUnreadCount', 'sellerUnreadCount'])
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['lastMessage', 'updatedAt', 'buyerUnreadCount', 'sellerUnreadCount']))
+      );
+
+      match /messages/{messageId} {
+        allow read: if signedIn()
+          && get(/databases/$(database)/documents/marketplace_conversations/$(conversationId)).data.participantIds
+            .hasAny([request.auth.uid]);
+        allow create: if canUseInteractiveFeatures()
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 500
+          && get(/databases/$(database)/documents/marketplace_conversations/$(conversationId)).data.participantIds
+            .hasAny([request.auth.uid])
+          && (
+            // The buyer may send up to 3 messages while pending.
+            (request.resource.data.kind in ['interest', 'message', 'image']
+              && get(/databases/$(database)/documents/marketplace_conversations/$(conversationId)).data.status == 'pending'
+              && get(/databases/$(database)/documents/marketplace_conversations/$(conversationId)).data.buyerId == request.auth.uid)
+            ||
+            // Normal messages unlock only after the seller accepts.
+            (request.resource.data.kind in ['message', 'image']
+              && get(/databases/$(database)/documents/marketplace_conversations/$(conversationId)).data.status == 'accepted')
+          );
+        allow update: if canUseInteractiveFeatures()
+          && get(/databases/$(database)/documents/marketplace_conversations/$(conversationId)).data.participantIds
+            .hasAny([request.auth.uid])
+          && (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+            ||
+            (resource.data.senderId == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'isEdited', 'editedAt', 'isUnsent', 'unsentAt']))
+          );
+        allow delete: if false;
+      }
+    }
+
+    match /jobs/{jobId} {
+      allow read: if signedIn();
+      allow create: if canUseInteractiveFeatures()
+        && request.resource.data.posterId == request.auth.uid
+        && validHelpPost();
+      allow update: if isApprovedAdmin()
+        || (canUseInteractiveFeatures()
+          && resource.data.posterId == request.auth.uid
+          && request.resource.data.posterId == resource.data.posterId
+          && request.resource.data.category == resource.data.category
+          && request.resource.data.status == resource.data.status
+          && validHelpPost()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'title', 'company', 'salary', 'type', 'description', 'location',
+            'contact', 'helpCategory', 'urgency', 'dateNeeded', 'scheduledAt', 'imageUrl',
+            'contactPreference'
+          ]));
+      allow delete: if isApprovedAdmin()
+        || (canUseInteractiveFeatures() && resource.data.posterId == request.auth.uid);
+
+      match /interests/{volunteerId} {
+        function parentJob() {
+          return get(/databases/$(database)/documents/jobs/$(jobId)).data;
+        }
+
+        allow read: if isApprovedAdmin()
+          || (signedIn()
+            && (request.auth.uid == volunteerId
+              || parentJob().posterId == request.auth.uid));
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /chats/{chatId} {
+      allow read, create, update, delete: if false;
+
+      match /messages/{messageId} {
+        allow read, create, update, delete: if false;
+      }
+    }
+
+    match /bayanihan_conversations/{conversationId} {
+      function conversationParticipant() {
+        return signedIn()
+          && request.auth.uid in resource.data.participants;
+      }
+
+      allow read: if isApprovedAdmin() || conversationParticipant();
+      allow create, update, delete: if false;
+
+      match /messages/{messageId} {
+        function parentConversation() {
+          return get(/databases/$(database)/documents/bayanihan_conversations/$(conversationId)).data;
+        }
+
+        function messageParticipant() {
+          return canUseInteractiveFeatures()
+            && request.auth.uid in parentConversation().participants
+            && (request.auth.uid == parentConversation().requesterId
+              || request.auth.uid == parentConversation().helperId);
+        }
+
+        allow read: if isApprovedAdmin() || messageParticipant();
+        allow create: if messageParticipant()
+          && (
+            parentConversation().status == 'active'
+            || (
+              parentConversation().status == 'pending'
+              && request.auth.uid == parentConversation().helperId
+            )
+          )
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.kind in ['message', 'image']
+          && (request.resource.data.sentAt == request.time || request.resource.data.sentAt is timestamp)
+          && (
+            request.resource.data.keys().hasOnly(['senderId', 'text', 'kind', 'sentAt'])
+            || request.resource.data.keys().hasOnly(['senderId', 'text', 'kind', 'sentAt', 'imageUrl'])
+          );
+        allow update: if canUseInteractiveFeatures()
+          && (
+            request.auth.uid in parentConversation().participants
+            || request.auth.uid == parentConversation().requesterId
+            || request.auth.uid == parentConversation().helperId
+          )
+          && (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+            ||
+            (resource.data.senderId == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'isEdited', 'editedAt', 'isUnsent', 'unsentAt']))
+          );
+        allow delete: if false;
+      }
+    }
+
+    match /emergency_reports/{reportId} {
+      allow read: if isApprovedAdmin()
+        || isOwner(resource.data.reporterId)
+        || responderCanAccessEmergency(resource.data);
+      // No client creates reports any more, and the old open create let any
+      // account (even a restricted one) file pre-resolved or misrouted reports.
+      allow create: if false;
+      allow update: if isApprovedAdmin()
+        || (responderCanAccessEmergency(resource.data)
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.status in ['acknowledged', 'responding', 'resolved']
+          && ((resource.data.status in ['submitted']
+                && request.resource.data.status == 'acknowledged')
+            || (resource.data.status in ['acknowledged', 'received']
+                && request.resource.data.status in ['responding', 'resolved'])
+            || (resource.data.status in ['responding', 'dispatched']
+                && request.resource.data.status == 'resolved'))
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'statusUpdatedAt', 'routedAgency', 'statusHistory', 'updatedBy']));
+    }
+
+    match /helpdesk_tickets/{ticketId} {
+      allow create: if canUseInteractiveFeatures()
+        && request.resource.data.userId == request.auth.uid
+        && boundedString(request.resource.data.subject, 3, 120)
+        && boundedString(request.resource.data.message, 10, 1000)
+        && request.resource.data.status == 'Open';
+      allow read: if isApprovedAdmin() || isOwner(resource.data.userId);
+      allow update: if isApprovedAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isApprovedAdmin()
+          || isOwner(get(/databases/$(database)/documents/helpdesk_tickets/$(ticketId)).data.userId);
+        allow create: if canUseInteractiveFeatures()
+          && request.resource.data.senderId == request.auth.uid
+          && boundedString(request.resource.data.message, 1, 1000)
+          && (isApprovedAdmin()
+            || isOwner(get(/databases/$(database)/documents/helpdesk_tickets/$(ticketId)).data.userId));
+      }
+    }
+
+    match /civic_points/{userId} {
+      allow read: if isOwner(userId) || isApprovedAdmin();
+      allow create, update: if isApprovedAdmin();
+
+      match /history/{entryId} {
+        allow read: if isOwner(userId) || isApprovedAdmin();
+        allow create: if isApprovedAdmin();
+      }
+    }
+  }
+}

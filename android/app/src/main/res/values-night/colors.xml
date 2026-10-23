@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="splash_background">#101E19</color>
+    <color name="esugid_background">#101E19</color>
+    <color name="esugid_surface">#192C24</color>
+    <color name="esugid_text_primary">#ECF5EF</color>
+    <color name="esugid_text_secondary">#B3C8BC</color>
+    <color name="esugid_error">#FFB0B6</color>
+    <color name="esugid_error_surface">#422A2E</color>
+    <color name="esugid_error_solid">#A42C39</color>
+    <color name="esugid_on_accent">#F5FFF9</color>
+</resources>

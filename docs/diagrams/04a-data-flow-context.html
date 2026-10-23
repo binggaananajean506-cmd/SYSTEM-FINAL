@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-SUGID Context Data Flow Diagram</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #ffffff;
+      --color-ink:    #000000;
+      --color-muted:  #333333;
+      --font-sans:    'Geist', system-ui, sans-serif;
+      --font-serif:   'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:    'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1120px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2.2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1120px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Data Flow Diagram · Level 0</p>
+    <h1>E-SUGID Context Data Flow Diagram</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1120 660" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="dfd-context-title dfd-context-desc">
+        <title id="dfd-context-title">E-SUGID Context Data Flow Diagram</title>
+        <desc id="dfd-context-desc">Residents send profiles, concerns, emergency reports and requests to E-SUGID and receive announcements, alerts and status updates; office staff receive cases and send updates; the LGU IT admin manages accounts and policies; external services handle email, AI answers and push delivery.</desc>
+        <defs>
+<marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0, 10 4, 0 8" fill="#333333"/></marker>
+<marker id="gen" markerWidth="14" markerHeight="12" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><polygon points="1 1, 13 6, 1 11" fill="#ffffff" stroke="#000000" stroke-width="1.2"/></marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#ffffff"/>
+<path d="M224,264 L440,264" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="270.0" y="226.0" width="124" height="32" rx="2" fill="#ffffff"/>
+<text x="332" y="237.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">PROFILE · CONCERNS</text>
+<text x="332" y="251.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">SOS · REQUESTS</text>
+<path d="M440,304 L224,304" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="278.0" y="310.0" width="108" height="32" rx="2" fill="#ffffff"/>
+<text x="332" y="321.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">ANNOUNCEMENTS</text>
+<text x="332" y="335.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">ALERTS · STATUS</text>
+<path d="M680,264 L896,264" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="738.0" y="226.0" width="100" height="32" rx="2" fill="#ffffff"/>
+<text x="788" y="237.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">ASSIGNED CASES</text>
+<text x="788" y="251.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">NOTIFICATIONS</text>
+<path d="M896,304 L680,304" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="734.0" y="310.0" width="108" height="32" rx="2" fill="#ffffff"/>
+<text x="788" y="321.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">POSTS · UPDATES</text>
+<text x="788" y="335.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">REVIEWS</text>
+<path d="M540,480 L540,360" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="420.0" y="404.0" width="112" height="32" rx="2" fill="#ffffff"/>
+<text x="476.0" y="415.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">ACCOUNTS · ROLES</text>
+<text x="476.0" y="429.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">POLICIES</text>
+<path d="M580,360 L580,480" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="588.0" y="404.0" width="76" height="32" rx="2" fill="#ffffff"/>
+<text x="626.0" y="415.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">REPORTS</text>
+<text x="626.0" y="429.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">AUDIT LOGS</text>
+<path d="M540,200 L540,112" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="420.0" y="140.0" width="112" height="32" rx="2" fill="#ffffff"/>
+<text x="476.0" y="151.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">OTP EMAIL · PUSH</text>
+<text x="476.0" y="165.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">AI QUESTIONS</text>
+<path d="M580,112 L580,200" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="588.0" y="140.0" width="108" height="32" rx="2" fill="#ffffff"/>
+<text x="642.0" y="151.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">AI ANSWERS</text>
+<text x="642.0" y="165.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">DELIVERY STATUS</text>
+<rect x="440" y="200" width="240" height="160" rx="16" fill="#ffffff" stroke="#000000" stroke-width="2.6"/>
+<line x1="440" y1="236" x2="680" y2="236" stroke="#000000" stroke-width="1.2"/>
+<text x="560" y="223" fill="#000000" font-size="13" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">0</text>
+<text x="560" y="280" fill="#000000" font-size="17" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">E-SUGID</text>
+<text x="560" y="302" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Community Services</text>
+<text x="560" y="320" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">System</text>
+<rect x="64" y="240" width="160" height="88" rx="6" fill="#ffffff"/>
+<rect x="64" y="240" width="160" height="88" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="144.0" y="278.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Resident</text>
+<text x="144.0" y="295.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">mobile app user</text>
+<rect x="896" y="240" width="160" height="88" rx="6" fill="#ffffff"/>
+<rect x="896" y="240" width="160" height="88" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="976.0" y="278.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Office Staff</text>
+<text x="976.0" y="295.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">barangay · org · dept</text>
+<rect x="480" y="480" width="160" height="80" rx="6" fill="#ffffff"/>
+<rect x="480" y="480" width="160" height="80" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="560.0" y="514.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">LGU IT Admin</text>
+<text x="560.0" y="531.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">admin console</text>
+<rect x="480" y="32" width="160" height="80" rx="6" fill="#ffffff"/>
+<rect x="480" y="32" width="160" height="80" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2" stroke-dasharray="5,4"/>
+<text x="560.0" y="66.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">External Services</text>
+<text x="560.0" y="83.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Brevo · Gemini · FCM</text>
+<line x1="32" y1="604" x2="1088" y2="604" stroke="#000000" stroke-opacity="0.15" stroke-width="0.8"/>
+<text x="32" y="628" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="500" letter-spacing="0.14em">LEGEND</text>
+<rect x="112" y="616" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="2.6"/>
+<text x="158" y="628" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Process (the system)</text>
+<rect x="326" y="616" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="372" y="628" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">External entity</text>
+<rect x="507" y="616" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="1.2" stroke-dasharray="5,4"/>
+<text x="553" y="628" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Third-party service</text>
+<line x1="714" y1="624" x2="750" y2="624" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="760" y="628" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Data flow</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

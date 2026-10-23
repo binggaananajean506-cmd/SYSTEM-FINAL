@@ -1,0 +1,71 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+/admin_web/test-results/
+/admin_web/playwright-report/
+/landing_page/.firebase/
+/deploy_web/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+/android/key.properties
+*.jks
+*.keystore
+
+# Local dependency/build caches and Android release artifacts
+node_modules/
+.gradle/
+*.apk
+*.aab
+
+# Generated admin bundle (npm --prefix admin_web run build), tool caches, scratch output
+/admin_web/app.bundle.js
+/admin_web/app.bundle.css
+/.firebase/
+/.playwright-cli/
+/.codex-remote-attachments/
+/test-results/
+/output/
+/tmp/
+
+# Local nested project copy; preserve on disk until explicitly reconciled
+/esugid/

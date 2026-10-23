@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="splash_background">#123D2E</color>
+    <!-- Native emergency UI mirrors lib/app/theme/semantic_colors.dart. -->
+    <color name="esugid_background">#EEF4F0</color>
+    <color name="esugid_surface">#F8FBF9</color>
+    <color name="esugid_text_primary">#123127</color>
+    <color name="esugid_text_secondary">#52675C</color>
+    <color name="esugid_error">#B33038</color>
+    <color name="esugid_error_surface">#FBE9E9</color>
+    <color name="esugid_error_solid">#B33038</color>
+    <color name="esugid_on_accent">#FFFFFF</color>
+</resources>

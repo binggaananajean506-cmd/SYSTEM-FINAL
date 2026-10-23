@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-SUGID System Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #ffffff;
+      --color-ink:    #000000;
+      --color-muted:  #333333;
+      --font-sans:    'Geist', system-ui, sans-serif;
+      --font-serif:   'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:    'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2.2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1200px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">System Architecture · E-SUGID</p>
+    <h1>E-SUGID System Architecture</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1200 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="system-architecture-title system-architecture-desc">
+        <title id="system-architecture-title">E-SUGID System Architecture</title>
+        <desc id="system-architecture-desc">The resident mobile app and staff admin console use Firebase Authentication, Firestore, Storage and Cloud Functions, which also drive push messaging and call the Gemini and Brevo services.</desc>
+        <defs>
+<marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0, 10 4, 0 8" fill="#333333"/></marker>
+<marker id="gen" markerWidth="14" markerHeight="12" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><polygon points="1 1, 13 6, 1 11" fill="#ffffff" stroke="#000000" stroke-width="1.2"/></marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#ffffff"/>
+<rect x="40" y="256" width="1120" height="136" rx="8" fill="none" stroke="#000000" stroke-width="1" stroke-dasharray="6,4"/>
+<rect x="184" y="249" width="196" height="14" fill="#ffffff"/>
+<text x="282.0" y="260" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.14em">FIREBASE PROJECT · e-sugid</text>
+<path d="M508,152 L508,188 Q508,196 500,196 L160,196 Q152,196 152,204 L152,296" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="302.0" y="170.0" width="56" height="20" rx="2" fill="#ffffff"/>
+<text x="330" y="182.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">SIGN IN</text>
+<path d="M548,152 L548,228 Q548,236 540,236 L384,236 Q376,236 376,244 L376,296" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="412.0" y="210.0" width="100" height="20" rx="2" fill="#ffffff"/>
+<text x="462" y="222.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">REAL-TIME DATA</text>
+<path d="M600,152 L600,296" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="608.0" y="206.0" width="96" height="20" rx="2" fill="#ffffff"/>
+<text x="656.0" y="218.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">CALLABLE APIS</text>
+<path d="M720,100 L1040,100 Q1048,100 1048,108 L1048,296" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="856.0" y="74.0" width="88" height="20" rx="2" fill="#ffffff"/>
+<text x="900" y="86.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">UPLOAD FILES</text>
+<path d="M824,296 L824,136 Q824,128 816,128 L720,128" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="832.0" y="198.0" width="84" height="20" rx="2" fill="#ffffff"/>
+<text x="874.0" y="210.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">PUSH ALERTS</text>
+<path d="M480,116 L344,116" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="364.0" y="90.0" width="96" height="20" rx="2" fill="#ffffff"/>
+<text x="412" y="102.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">MAP · WEATHER</text>
+<path d="M512,320 L464,320" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M464,344 L512,344" fill="none" stroke="#333333" stroke-width="1.3" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+<path d="M688,332 L736,332" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M252,512 L252,448 Q252,440 244,440 L160,440 Q152,440 152,432 L152,368" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M376,512 L376,368" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M452,512 L452,456 Q452,448 460,448 L560,448 Q568,448 568,440 L568,368" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="268.0" y="478.0" width="100" height="20" rx="2" fill="#ffffff"/>
+<text x="318.0" y="490.0" fill="#555555" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.06em">MANAGE RECORDS</text>
+<path d="M632,368 L632,512" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<path d="M664,368 L664,448 Q664,456 672,456 L848,456 Q856,456 856,464 L856,512" fill="none" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<rect x="136" y="80" width="208" height="72" rx="6" fill="#ffffff"/>
+<rect x="136" y="80" width="208" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2" stroke-dasharray="5,4"/>
+<rect x="146" y="90" width="60" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="176.0" y="101.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">EXTERNAL</text>
+<text x="240.0" y="123.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Map &amp; Weather APIs</text>
+<text x="240.0" y="140.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Google Maps · Open-Meteo</text>
+<rect x="480" y="80" width="240" height="72" rx="6" fill="#ffffff"/>
+<rect x="480" y="80" width="240" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<rect x="490" y="90" width="48" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="514.0" y="101.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">CLIENT</text>
+<text x="600.0" y="123.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Resident Mobile App</text>
+<text x="600.0" y="140.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Flutter · Android</text>
+<rect x="64" y="296" width="176" height="72" rx="6" fill="#ffffff"/>
+<rect x="64" y="296" width="176" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<rect x="74" y="306" width="60" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="104.0" y="317.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">FIREBASE</text>
+<text x="152.0" y="339.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Authentication</text>
+<text x="152.0" y="356.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">email · Google · OTP</text>
+<rect x="288" y="296" width="176" height="72" rx="6" fill="#ffffff"/>
+<rect x="288" y="296" width="176" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<rect x="298" y="306" width="60" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="328.0" y="317.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">DATABASE</text>
+<text x="376.0" y="339.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Cloud Firestore</text>
+<text x="376.0" y="356.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">NoSQL · security rules</text>
+<rect x="512" y="296" width="176" height="72" rx="6" fill="#ffffff"/>
+<rect x="512" y="296" width="176" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="2.6"/>
+<rect x="522" y="306" width="52" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="548.0" y="317.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">BACKEND</text>
+<text x="600.0" y="339.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Cloud Functions</text>
+<text x="600.0" y="356.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">APIs · triggers · cron</text>
+<rect x="736" y="296" width="176" height="72" rx="6" fill="#ffffff"/>
+<rect x="736" y="296" width="176" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<rect x="746" y="306" width="60" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="776.0" y="317.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">FIREBASE</text>
+<text x="824.0" y="339.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Cloud Messaging</text>
+<text x="824.0" y="356.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">FCM topics · devices</text>
+<rect x="960" y="296" width="176" height="72" rx="6" fill="#ffffff"/>
+<rect x="960" y="296" width="176" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<rect x="970" y="306" width="60" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="1000.0" y="317.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">FIREBASE</text>
+<text x="1048.0" y="339.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Cloud Storage</text>
+<text x="1048.0" y="356.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">photos · documents</text>
+<rect x="232" y="512" width="240" height="72" rx="6" fill="#ffffff"/>
+<rect x="232" y="512" width="240" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<rect x="242" y="522" width="48" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="266.0" y="533.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">CLIENT</text>
+<text x="352.0" y="555.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Staff Admin Console</text>
+<text x="352.0" y="572.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">web · Firebase Hosting</text>
+<rect x="544" y="512" width="176" height="72" rx="6" fill="#ffffff"/>
+<rect x="544" y="512" width="176" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2" stroke-dasharray="5,4"/>
+<rect x="554" y="522" width="60" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="584.0" y="533.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">EXTERNAL</text>
+<text x="632.0" y="555.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Gemini API</text>
+<text x="632.0" y="572.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">E-SUGID Assistant</text>
+<rect x="768" y="512" width="176" height="72" rx="6" fill="#ffffff"/>
+<rect x="768" y="512" width="176" height="72" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2" stroke-dasharray="5,4"/>
+<rect x="778" y="522" width="60" height="16" rx="2" fill="none" stroke="#000000" stroke-width="0.8"/><text x="808.0" y="533.5" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="500" letter-spacing="0.08em">EXTERNAL</text>
+<text x="856.0" y="555.5" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">Brevo Email API</text>
+<text x="856.0" y="572.5" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">OTP · invitations</text>
+<line x1="32" y1="632" x2="1168" y2="632" stroke="#000000" stroke-opacity="0.15" stroke-width="0.8"/>
+<text x="32" y="656" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="500" letter-spacing="0.14em">LEGEND</text>
+<line x1="112" y1="652" x2="148" y2="652" stroke="#333333" stroke-width="1.3" marker-end="url(#arrow)"/>
+<text x="158" y="656" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Request / data flow</text>
+<line x1="319" y1="652" x2="355" y2="652" stroke="#333333" stroke-width="1.3" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+<text x="365" y="656" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Event trigger</text>
+<rect x="486" y="644" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="2.6"/>
+<text x="532" y="656" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Core backend</text>
+<rect x="647" y="644" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<text x="693" y="656" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">E-SUGID component</text>
+<rect x="841" y="644" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="1.2" stroke-dasharray="5,4"/>
+<text x="887" y="656" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Third-party service</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

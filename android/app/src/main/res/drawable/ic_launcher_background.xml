@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Soft sage/mint base chosen to complement the E-SUGID seal. -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="135"
+                android:startColor="#EDF6E5"
+                android:centerColor="#DDEDCF"
+                android:endColor="#CFE4BE" />
+        </shape>
+    </item>
+    <!-- A restrained warm highlight keeps the gold seal crisp at small sizes. -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="65%"
+                android:centerX="50%"
+                android:centerY="46%"
+                android:startColor="#14FBBF24"
+                android:centerColor="#08EAB308"
+                android:endColor="#00DDEDCF" />
+        </shape>
+    </item>
+    <!-- Subtle Emerald Ambient Underglow matching Logo's Deep Greens -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="80%"
+                android:centerX="50%"
+                android:centerY="85%"
+                android:startColor="#1010B981"
+                android:endColor="#00DDEDCF" />
+        </shape>
+    </item>
+</layer-list>

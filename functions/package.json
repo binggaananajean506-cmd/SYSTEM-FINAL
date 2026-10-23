@@ -1,0 +1,20 @@
+{
+  "name": "esugid-functions",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "lint": "node --check index.js && node --check route_helpers.js && node --check organization_follow_helpers.js && node --check complaint_helpers.js && node --check complaint_tracking.js && node --check access_policy.js && node --check emergency_helpers.js && node --check verification_helpers.js && node --check account_approval_helpers.js && node --check staff_registration_helpers.js && node --check concern_routing_helpers.js && node --check concern_categories.js && node --check organization_registration_helpers.js && node --check assistant_helpers.js && node --check registration_otp_helpers.js && node --check community_review_helpers.js",
+    "test:complaints:integration": "node --test complaint_tracking.integration.test.js",
+    "test": "node --test index-private-helpers.test.js access_policy.test.js emergency_helpers.test.js verification_helpers.test.js account_approval_helpers.test.js staff_registration_helpers.test.js announcement_schedule.test.js concern_routing_helpers.test.js concern_categories.test.js organization_registration_helpers.test.js assistant_helpers.test.js registration_otp_helpers.test.js community_review_helpers.test.js route_helpers.test.js organization_follow_helpers.test.js complaint_helpers.test.js complaint_tracking.test.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
+}

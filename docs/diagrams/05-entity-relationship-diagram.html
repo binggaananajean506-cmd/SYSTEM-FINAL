@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-SUGID Entity-Relationship Diagram</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #ffffff;
+      --color-ink:    #000000;
+      --color-muted:  #333333;
+      --font-sans:    'Geist', system-ui, sans-serif;
+      --font-serif:   'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:    'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1120px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2.2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1120px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Entity-Relationship Diagram · Database Design</p>
+    <h1>E-SUGID Entity-Relationship Diagram</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1120 1120" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="er-title er-desc">
+        <title id="er-title">E-SUGID Entity-Relationship Diagram</title>
+        <desc id="er-desc">The users collection links to barangays, departments and organizations and owns posts, alerts, concerns, emergency reports, document requests, notifications and audit logs; organizations are assigned concerns.</desc>
+        <defs>
+<marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><polygon points="0 0, 10 4, 0 8" fill="#333333"/></marker>
+<marker id="gen" markerWidth="14" markerHeight="12" refX="13" refY="6" orient="auto" markerUnits="userSpaceOnUse"><polygon points="1 1, 13 6, 1 11" fill="#ffffff" stroke="#000000" stroke-width="1.2"/></marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#ffffff"/>
+<path d="M200,212 L200,232 Q200,240 208,240 L492,240 Q500,240 500,248 L500,272" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M560,212 L560,272" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M880,212 L880,232 Q880,240 872,240 L628,240 Q620,240 620,248 L620,272" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M960,212 L960,272" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M440,396.0 L320,396.0" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M440,460 L376,460 Q368,460 368,468 L368,658.0 Q368,666.0 360,666.0 L320,666.0" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M440,500 L408,500 Q400,500 400,508 L400,892.0 Q400,900.0 392,900.0 L320,900.0" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M680,422.0 L800,422.0" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M680,476 L744,476 Q752,476 752,484 L752,710.0 Q752,718.0 760,718.0 L800,718.0" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M680,516 L712,516 Q720,516 720,524 L720,944.0 Q720,952.0 728,952.0 L800,952.0" fill="none" stroke="#333333" stroke-width="1.3"/>
+<path d="M560,556 L560,616" fill="none" stroke="#333333" stroke-width="1.3"/>
+<rect x="204.0" y="218" width="16" height="16" rx="2" fill="#ffffff"/><text x="212" y="230" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="504.0" y="250" width="16" height="16" rx="2" fill="#ffffff"/><text x="512" y="262" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="564.0" y="218" width="16" height="16" rx="2" fill="#ffffff"/><text x="572" y="230" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="564.0" y="250" width="16" height="16" rx="2" fill="#ffffff"/><text x="572" y="262" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="860.0" y="218" width="16" height="16" rx="2" fill="#ffffff"/><text x="868" y="230" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="624.0" y="250" width="16" height="16" rx="2" fill="#ffffff"/><text x="632" y="262" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="964.0" y="218" width="16" height="16" rx="2" fill="#ffffff"/><text x="972" y="230" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="964.0" y="250" width="16" height="16" rx="2" fill="#ffffff"/><text x="972" y="262" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="420.0" y="374.0" width="16" height="16" rx="2" fill="#ffffff"/><text x="428" y="386.0" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="324.0" y="374.0" width="16" height="16" rx="2" fill="#ffffff"/><text x="332" y="386.0" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="420.0" y="438" width="16" height="16" rx="2" fill="#ffffff"/><text x="428" y="450" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="324.0" y="644.0" width="16" height="16" rx="2" fill="#ffffff"/><text x="332" y="656.0" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="420.0" y="506" width="16" height="16" rx="2" fill="#ffffff"/><text x="428" y="518" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="324.0" y="878.0" width="16" height="16" rx="2" fill="#ffffff"/><text x="332" y="890.0" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="684.0" y="400.0" width="16" height="16" rx="2" fill="#ffffff"/><text x="692" y="412.0" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="780.0" y="400.0" width="16" height="16" rx="2" fill="#ffffff"/><text x="788" y="412.0" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="684.0" y="454" width="16" height="16" rx="2" fill="#ffffff"/><text x="692" y="466" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="780.0" y="696.0" width="16" height="16" rx="2" fill="#ffffff"/><text x="788" y="708.0" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="684.0" y="522" width="16" height="16" rx="2" fill="#ffffff"/><text x="692" y="534" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="780.0" y="930.0" width="16" height="16" rx="2" fill="#ffffff"/><text x="788" y="942.0" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="564.0" y="562" width="16" height="16" rx="2" fill="#ffffff"/><text x="572" y="574" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">1</text>
+<rect x="564.0" y="594" width="16" height="16" rx="2" fill="#ffffff"/><text x="572" y="606" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" font-weight="600">N</text>
+<rect x="80" y="72" width="240" height="140" rx="6" fill="#ffffff"/>
+<rect x="80" y="72" width="240" height="140" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="80" y1="108" x2="320" y2="108" stroke="#000000" stroke-width="1"/>
+<text x="200.0" y="95" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">barangay_profiles</text>
+<text x="94" y="128" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="120" y="128" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="120" y="146" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">name</text>
+<text x="120" y="164" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">barangay</text>
+<text x="120" y="182" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">logoUrl</text>
+<text x="120" y="200" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">updatedAt</text>
+<rect x="440" y="72" width="240" height="140" rx="6" fill="#ffffff"/>
+<rect x="440" y="72" width="240" height="140" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="440" y1="108" x2="680" y2="108" stroke="#000000" stroke-width="1"/>
+<text x="560.0" y="95" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">lgu_departments</text>
+<text x="454" y="128" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="480" y="128" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="480" y="146" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">name</text>
+<text x="480" y="164" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">publicName</text>
+<text x="480" y="182" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">status</text>
+<text x="480" y="200" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">updatedAt</text>
+<rect x="800" y="72" width="240" height="140" rx="6" fill="#ffffff"/>
+<rect x="800" y="72" width="240" height="140" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="800" y1="108" x2="1040" y2="108" stroke="#000000" stroke-width="1"/>
+<text x="920.0" y="95" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">organizations</text>
+<text x="814" y="128" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="840" y="128" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="840" y="146" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">name</text>
+<text x="840" y="164" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">organizationType</text>
+<text x="840" y="182" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">status</text>
+<text x="840" y="200" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">updatedAt</text>
+<rect x="440" y="272" width="240" height="284" rx="6" fill="#ffffff"/>
+<rect x="440" y="272" width="240" height="284" rx="6" fill="#ffffff" stroke="#000000" stroke-width="2.6"/>
+<line x1="440" y1="308" x2="680" y2="308" stroke="#000000" stroke-width="1"/>
+<text x="560.0" y="295" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">users</text>
+<text x="454" y="328" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="480" y="328" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">uid</text>
+<text x="480" y="346" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">email</text>
+<text x="480" y="364" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">name</text>
+<text x="480" y="382" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">role</text>
+<text x="480" y="400" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">positionTitle</text>
+<text x="480" y="418" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">accountStatus</text>
+<text x="480" y="436" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">verificationStatus</text>
+<text x="454" y="454" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="480" y="454" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">barangayId</text>
+<text x="454" y="472" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="480" y="472" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">departmentId</text>
+<text x="454" y="490" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="480" y="490" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">organizationId</text>
+<text x="480" y="508" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">contactNumber</text>
+<text x="480" y="526" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">address</text>
+<text x="480" y="544" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">birthDate</text>
+<rect x="80" y="272" width="240" height="248" rx="6" fill="#ffffff"/>
+<rect x="80" y="272" width="240" height="248" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="80" y1="308" x2="320" y2="308" stroke="#000000" stroke-width="1"/>
+<text x="200.0" y="295" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">posts</text>
+<text x="94" y="328" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="120" y="328" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="120" y="346" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">title</text>
+<text x="120" y="364" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">content</text>
+<text x="120" y="382" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">category</text>
+<text x="94" y="400" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="120" y="400" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">authorId</text>
+<text x="120" y="418" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">publisherEntityType</text>
+<text x="120" y="436" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">visibility</text>
+<text x="120" y="454" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">targetBarangays</text>
+<text x="120" y="472" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">status</text>
+<text x="120" y="490" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">publishAt</text>
+<text x="120" y="508" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">expiresAt</text>
+<rect x="80" y="552" width="240" height="228" rx="6" fill="#ffffff"/>
+<rect x="80" y="552" width="240" height="228" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="80" y1="588" x2="320" y2="588" stroke="#000000" stroke-width="1"/>
+<text x="200.0" y="575" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">alerts</text>
+<text x="94" y="608" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="120" y="608" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="120" y="626" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">title</text>
+<text x="120" y="644" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">message</text>
+<text x="120" y="662" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">severity</text>
+<text x="120" y="680" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">alertType</text>
+<text x="94" y="698" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="120" y="698" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">createdBy</text>
+<text x="120" y="716" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">targetBarangays</text>
+<text x="120" y="734" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">status</text>
+<text x="120" y="752" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">publishedAt</text>
+<text x="120" y="770" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">expiresAt</text>
+<rect x="80" y="812" width="240" height="176" rx="6" fill="#ffffff"/>
+<rect x="80" y="812" width="240" height="176" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="80" y1="848" x2="320" y2="848" stroke="#000000" stroke-width="1"/>
+<text x="200.0" y="835" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">audit_logs</text>
+<text x="94" y="868" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="120" y="868" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="94" y="886" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="120" y="886" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">actorId</text>
+<text x="120" y="904" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">action</text>
+<text x="120" y="922" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">entityType</text>
+<text x="120" y="940" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">entityId</text>
+<text x="120" y="958" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">barangayId</text>
+<text x="120" y="976" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">createdAt</text>
+<rect x="800" y="272" width="240" height="300" rx="6" fill="#ffffff"/>
+<rect x="800" y="272" width="240" height="300" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="800" y1="308" x2="1040" y2="308" stroke="#000000" stroke-width="1"/>
+<text x="920.0" y="295" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">submissions (concerns)</text>
+<text x="814" y="328" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="840" y="328" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="840" y="346" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">title</text>
+<text x="840" y="364" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">description</text>
+<text x="840" y="382" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">category</text>
+<text x="840" y="400" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">status</text>
+<text x="840" y="418" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">visibility</text>
+<text x="814" y="436" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="840" y="436" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">residentId</text>
+<text x="814" y="454" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="840" y="454" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">organizationId</text>
+<text x="814" y="472" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="840" y="472" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">recipientBarangayId</text>
+<text x="840" y="490" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">recipientType</text>
+<text x="840" y="508" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">routingStatus</text>
+<text x="840" y="526" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">location</text>
+<text x="840" y="544" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">attachmentUrl</text>
+<text x="840" y="562" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">submittedAt</text>
+<rect x="800" y="604" width="240" height="228" rx="6" fill="#ffffff"/>
+<rect x="800" y="604" width="240" height="228" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="800" y1="640" x2="1040" y2="640" stroke="#000000" stroke-width="1"/>
+<text x="920.0" y="627" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">emergency_reports</text>
+<text x="814" y="660" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="840" y="660" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="814" y="678" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="840" y="678" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">reporterId</text>
+<text x="840" y="696" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">emergencyType</text>
+<text x="840" y="714" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">description</text>
+<text x="840" y="732" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">location</text>
+<text x="840" y="750" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">barangay</text>
+<text x="840" y="768" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">routedAgency</text>
+<text x="840" y="786" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">status</text>
+<text x="840" y="804" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">imageUrl</text>
+<text x="840" y="822" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">createdAt</text>
+<rect x="800" y="864" width="240" height="176" rx="6" fill="#ffffff"/>
+<rect x="800" y="864" width="240" height="176" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="800" y1="900" x2="1040" y2="900" stroke="#000000" stroke-width="1"/>
+<text x="920.0" y="887" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">document_requests</text>
+<text x="814" y="920" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="840" y="920" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="814" y="938" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="840" y="938" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">userId</text>
+<text x="840" y="956" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">type</text>
+<text x="840" y="974" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">status</text>
+<text x="840" y="992" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">paymentStatus</text>
+<text x="840" y="1010" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">note</text>
+<text x="840" y="1028" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">createdAt</text>
+<rect x="440" y="616" width="240" height="192" rx="6" fill="#ffffff"/>
+<rect x="440" y="616" width="240" height="192" rx="6" fill="#ffffff" stroke="#000000" stroke-width="1.2"/>
+<line x1="440" y1="652" x2="680" y2="652" stroke="#000000" stroke-width="1"/>
+<text x="560.0" y="639" fill="#000000" font-size="14" font-family="'Geist', system-ui, sans-serif" text-anchor="middle" font-weight="600">notifications</text>
+<text x="454" y="672" fill="#000000" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">PK</text>
+<text x="480" y="672" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">id</text>
+<text x="454" y="690" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="600">FK</text>
+<text x="480" y="690" fill="#000000" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">userId</text>
+<text x="480" y="708" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">type</text>
+<text x="480" y="726" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">title</text>
+<text x="480" y="744" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">message</text>
+<text x="480" y="762" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">referenceId</text>
+<text x="480" y="780" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">read</text>
+<text x="480" y="798" fill="#555555" font-size="11" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start">createdAt</text>
+<line x1="32" y1="1064" x2="1088" y2="1064" stroke="#000000" stroke-opacity="0.15" stroke-width="0.8"/>
+<text x="32" y="1088" fill="#555555" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="start" font-weight="500" letter-spacing="0.14em">LEGEND</text>
+<rect x="112" y="1076" width="36" height="16" rx="3" fill="#ffffff" stroke="#000000" stroke-width="2.6"/>
+<text x="158" y="1088" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Central entity</text>
+<line x1="286" y1="1084" x2="322" y2="1084" stroke="#333333" stroke-width="1.3"/>
+<text x="332" y="1088" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">Relationship (1 to N)</text>
+<text x="560" y="1088" fill="#333333" font-size="11" font-family="'Geist', system-ui, sans-serif" text-anchor="start">PK primary key · FK foreign key (document ID reference) · Cloud Firestore collections</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

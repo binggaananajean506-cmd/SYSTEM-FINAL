@@ -1,0 +1,17 @@
+{
+  "name": "esugid-admin-web",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build-admin.mjs",
+    "test:layout": "npm run build && playwright test"
+  },
+  "dependencies": {
+    "firebase": "10.7.1",
+    "jspdf": "^4.2.1",
+    "maplibre-gl": "^5.24.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "esbuild": "0.25.8"
+  }
+}

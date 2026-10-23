@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1072913761483",
+    "project_id": "e-sugid",
+    "storage_bucket": "e-sugid.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1072913761483:android:2e39121ea8aba4dfd8874e",
+        "android_client_info": {
+          "package_name": "com.esugid.barili"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAAyOlf6ubOxxxPP_OYzRDkxU38k7WyjaU"
+        },
+        {
+          "current_key": "AIzaSyBsfyllQUO_2TwVIzra60p07dGOBWSZK4Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1072913761483:android:e7b52a570e3e94c5d8874e",
+        "android_client_info": {
+          "package_name": "com.example.esugid"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAAyOlf6ubOxxxPP_OYzRDkxU38k7WyjaU"
+        },
+        {
+          "current_key": "AIzaSyBsfyllQUO_2TwVIzra60p07dGOBWSZK4Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

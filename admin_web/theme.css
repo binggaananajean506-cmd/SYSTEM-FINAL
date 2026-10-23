@@ -1,0 +1,221 @@
+/* One semantic palette for the entire console. Component light-dark() values
+   preserve the existing light design and resolve their dark color here. */
+:root {
+  --background: #f2f7f4;
+  --surface: #ffffff;
+  --surfaceAlt: #f1f7f4;
+  --textPrimary: #102a22;
+  --textSecondary: #5f746c;
+  --border: #d5e2dc;
+  --inputBackground: #ffffff;
+  --primaryGreen: #087f60;
+  --hover: #e5f2eb;
+  --selected: #dff4eb;
+  --disabled: #64756d;
+  --disabledBackground: #e7ede9;
+  --success: #087f60;
+  --warning: #925b00;
+  --error: #b52d38;
+  --info: #246bb2;
+  --purple: #6b55b5;
+  --successSurface: #e1f5ed;
+  --warningSurface: #fff5dc;
+  --errorSurface: #fff0f0;
+  --infoSurface: #eaf3ff;
+  --purpleSurface: #f0edff;
+  --successBorder: #9bceb9;
+  --warningBorder: #e3c578;
+  --errorBorder: #e9a5aa;
+  --infoBorder: #9dbde1;
+  --purpleBorder: #c1afe6;
+  --brandStrong: #07382a;
+  --brand: #0b6249;
+  --brandHover: #087454;
+  --errorSolid: #b52d38;
+  --warningSolid: #855400;
+  --infoSolid: #246bb2;
+  --purpleSolid: #6b55b5;
+  --errorHover: #a02632;
+  --warningHover: #744900;
+  --infoHover: #1e5e9e;
+  --purpleHover: #59429e;
+  --onAccent: #ffffff;
+  --onBrandMuted: #c9e6da;
+  --onBrandSuccess: #79e1b2;
+  --onBrandWarning: #f5cf80;
+  --onBrandError: #ffb0b6;
+  --overlay: rgba(3, 18, 14, .65);
+  --shadowTint: rgba(0, 0, 0, .24);
+  --highlight: rgba(255, 255, 255, .65);
+}
+
+@media screen {
+:root[data-theme="dark"] {
+  --green-50: var(--surfaceAlt);
+  --green-100: var(--selected);
+  --background: #101e19;
+  --surface: #192c24;
+  --surfaceAlt: #20382d;
+  --textPrimary: #ecf5ef;
+  --textSecondary: #b3c8bc;
+  --border: #456354;
+  --inputBackground: #14271f;
+  --primaryGreen: #6de0ad;
+  --hover: #2c493a;
+  --selected: #284d3b;
+  --disabled: #a0b4a7;
+  --disabledBackground: #2b3c33;
+  --success: #79e1b2;
+  --warning: #f5cf80;
+  --error: #ffb0b6;
+  --info: #a4ceff;
+  --purple: #d1b9ff;
+  --successSurface: #203b2e;
+  --warningSurface: #40351f;
+  --errorSurface: #422a2e;
+  --infoSurface: #233749;
+  --purpleSurface: #352e49;
+  --successBorder: #4d8468;
+  --warningBorder: #927640;
+  --errorBorder: #9a5d66;
+  --infoBorder: #537da3;
+  --purpleBorder: #806caa;
+  --brandStrong: #07382a;
+  --brand: #0b6249;
+  --brandHover: #087454;
+  --errorSolid: #a32b38;
+  --warningSolid: #805300;
+  --infoSolid: #245b91;
+  --purpleSolid: #614491;
+  --errorHover: #b33443;
+  --warningHover: #8e5e00;
+  --infoHover: #2a6ba6;
+  --purpleHover: #7652a7;
+  --onAccent: #f5fff9;
+  --onBrandMuted: #c9e6da;
+  --overlay: rgba(3, 14, 10, .78);
+  --shadowTint: rgba(0, 0, 0, .38);
+  --highlight: rgba(179, 220, 196, .12);
+}
+}
+
+/* Compatibility aliases for existing shared components. */
+:root[data-theme] {
+  --ink: var(--textPrimary);
+  --muted: var(--textSecondary);
+  --line: var(--border);
+  --canvas: var(--background);
+  --danger-soft: var(--errorSurface);
+  --warning-soft: var(--warningSurface);
+  --info-soft: var(--infoSurface);
+  --success-soft: var(--successSurface);
+  --purple-soft: var(--purpleSurface);
+  color: var(--textPrimary);
+  background: var(--background);
+}
+
+body { color: var(--textPrimary); background-color: var(--background); }
+
+/* Layered important declarations also override legacy transition:all rules.
+   The controller removes this class after the new palette has painted. */
+@layer esugid-theme-change {
+  .theme-changing, .theme-changing *, .theme-changing *::before, .theme-changing *::after {
+    transition: none !important;
+  }
+}
+
+/* Existing pale text and glossy badges need slightly stronger light contrast. */
+:root[data-theme="light"] :is(.nav-link:not(.active), .logout-btn) { color: var(--onAccent); }
+:root[data-theme="light"] .emergency-send-glowing-btn:hover { background: linear-gradient(180deg, #c93636, #b52d38); }
+:root[data-theme="light"] :is(.activation-brand small, .activation-progress small, .activation-heading p, .activation-heading div > span:last-child, .activation-divider, .activation-back) {
+  color: var(--brandStrong);
+}
+
+:root[data-theme="dark"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="hidden"]), textarea, select) {
+  background-color: var(--inputBackground);
+  color: var(--textPrimary);
+  border-color: var(--border);
+  caret-color: var(--primaryGreen);
+}
+
+:root[data-theme="dark"] :is(input, textarea)::placeholder { color: var(--textSecondary); opacity: 1; }
+:root[data-theme="dark"] option { background: var(--inputBackground); color: var(--textPrimary); }
+input, select, textarea { accent-color: var(--brand); }
+
+input:is(:autofill, :-webkit-autofill),
+input:is(:autofill, :-webkit-autofill):is(:hover, :focus, :active) {
+  -webkit-text-fill-color: var(--textPrimary);
+  caret-color: var(--primaryGreen);
+  box-shadow: 0 0 0 1000px var(--inputBackground) inset !important;
+}
+
+@layer esugid-focus {
+  :root[data-theme] :is(button, a, input, select, textarea, summary, [tabindex], [role="button"]):focus-visible {
+    outline: 3px solid var(--primaryGreen) !important;
+    outline-offset: 3px;
+  }
+}
+:root[data-theme="dark"] :is(input, select, textarea)[aria-invalid="true"] { border-color: var(--error); }
+:root[data-theme="dark"] :is(button, input, select, textarea):disabled {
+  color: var(--disabled);
+  -webkit-text-fill-color: var(--disabled);
+  background-color: var(--disabledBackground);
+  background-image: none;
+  border-color: var(--border);
+  opacity: 1;
+}
+:root[data-theme="dark"] [aria-disabled="true"] { color: var(--disabled); }
+:root[data-theme="dark"] :is(tr[aria-selected="true"], tr.is-selected, tr.selected) > td { background: var(--selected); }
+::selection { color: var(--textPrimary); background: var(--selected); }
+
+/* MapLibre owns these controls; the geographic imagery itself is unchanged. */
+:root[data-theme="dark"] :is(.maplibregl-popup-content, .maplibregl-ctrl-group, .maplibregl-ctrl-attrib) {
+  background: var(--surface);
+  color: var(--textPrimary);
+  border-color: var(--border);
+}
+:root[data-theme="dark"] .maplibregl-ctrl-group button { border-color: var(--border); }
+:root[data-theme="dark"] .maplibregl-ctrl-group button:hover { background-color: var(--hover); }
+:root[data-theme="dark"] .maplibregl-ctrl-icon { filter: brightness(0) invert(1); }
+:root[data-theme="dark"] .maplibregl-ctrl-attrib a { color: var(--textSecondary); }
+:root[data-theme="dark"] :is(.maplibregl-popup-anchor-bottom, .maplibregl-popup-anchor-bottom-left, .maplibregl-popup-anchor-bottom-right) .maplibregl-popup-tip { border-top-color: var(--surface); }
+:root[data-theme="dark"] :is(.maplibregl-popup-anchor-top, .maplibregl-popup-anchor-top-left, .maplibregl-popup-anchor-top-right) .maplibregl-popup-tip { border-bottom-color: var(--surface); }
+:root[data-theme="dark"] .maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--surface); }
+:root[data-theme="dark"] .maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--surface); }
+:root[data-theme="dark"] .maplibregl-popup-close-button { color: var(--textPrimary); }
+:root[data-theme="dark"] .maplibregl-popup-close-button:hover { background: var(--hover); }
+
+/* Keep the same appearance picker, with an additional system choice. */
+.appearance-options-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.appearance-mode-card { min-width: 0; }
+.appearance-mode-label { flex-wrap: wrap; }
+.appearance-system-note { color: var(--textSecondary); font-size: 13px; }
+.appearance-preview--system { display: grid; place-items: center; background: var(--surfaceAlt); color: var(--primaryGreen); }
+.appearance-preview--system > span { font-size: 48px; }
+.auth-appearance-button { position: absolute; top: 16px; right: 16px; z-index: 3; }
+@media (max-width: 540px) {
+  .appearance-options-grid { grid-template-columns: 1fr; gap: 10px; }
+  .appearance-mode-card { display: flex; flex-direction: row; align-items: center; gap: 12px; padding: 12px; }
+  .appearance-preview-frame { width: 82px; height: 60px; flex-shrink: 0; margin-bottom: 0; }
+  .appearance-mode-footer { flex: 1; }
+  .appearance-modal-card { max-height: calc(100dvh - 32px); overflow-y: auto; }
+}
+
+/* Paper outputs retain their original colors even when opened from dark mode. */
+@media print {
+  :root[data-theme] { color-scheme: light !important; }
+}
+
+/* Sidebar and workspace seamless backdrop integration */
+.app-shell,
+#admin-dashboard,
+.workspace {
+  background: transparent !important;
+}
+
+:root[data-theme] .sidebar .municipal-brand strong {
+  color: #ffffff !important;
+  background: linear-gradient(180deg, #ffffff 0%, #d1fae5 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
