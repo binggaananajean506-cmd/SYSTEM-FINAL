@@ -229,28 +229,6 @@ service cloud.firestore {
         && staffRole() == 'mayor';
     }
 
-    function validEmergencyAlertCreate() {
-      let alert = request.resource.data;
-      return alert.keys().hasAll([
-          'title', 'message', 'instructions', 'alertType', 'severity',
-          'visibility', 'targetBarangays', 'audienceKeys', 'expiresAt',
-          'active', 'status', 'notificationRequested', 'createdBy'
-        ])
-        && alert.title is string && alert.title.size() > 0 && alert.title.size() <= 100
-        && alert.message is string && alert.message.size() > 0 && alert.message.size() <= 600
-        && alert.instructions is string && alert.instructions.size() > 0 && alert.instructions.size() <= 600
-        && alert.alertType is string && alert.alertType.size() > 0 && alert.alertType.size() <= 80
-        && alert.severity in ['warning', 'critical']
-        && alert.visibility in ['public', 'targeted']
-        && alert.targetBarangays is list && alert.targetBarangays.size() > 0 && alert.targetBarangays.size() <= 42
-        && alert.audienceKeys is list && alert.audienceKeys.size() > 0 && alert.audienceKeys.size() <= 42
-        && alert.expiresAt is string
-        && alert.active == true
-        && alert.status == 'active'
-        && alert.notificationRequested == true
-        && alert.createdBy == request.auth.uid;
-    }
-
     function isSuperAdmin() {
       return hasApprovedProfile()
         && staffRole() == 'super_admin';
@@ -304,20 +282,6 @@ service cloud.firestore {
         || canReadComplaintOffice(complaint));
     }
 
-    function isApprovedBarangayAlertPublisher() {
-      return isApprovedBarangayOfficial()
-        && staffRole() in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary']
-        && profile().barangay.size() > 0;
-    }
-
-    function isOwnBarangayAlert(alert) {
-      return alert.audience == 'targeted'
-        && alert.visibility == 'targeted'
-        && alert.targetBarangay == profile().barangay
-        && alert.targetBarangays == [profile().barangay]
-        && alert.audienceKeys == ['barangay:' + profile().barangay];
-    }
-
     function isApprovedPartner() {
       return hasApprovedProfile()
         && profile().role is string
@@ -334,16 +298,6 @@ service cloud.firestore {
         && staffOrganizationId().size() > 0
         && record.organizationId is string
         && record.organizationId == staffOrganizationId();
-    }
-
-    function concernCategoryId(categoryId) {
-      return categoryId == 'peace_public_safety' ? 'public_safety'
-        : categoryId == 'roads_accessibility' ? 'roads'
-        : categoryId == 'infrastructure_facilities' ? 'infrastructure'
-        : categoryId == 'drainage_flooding' ? 'drainage'
-        : categoryId == 'sanitation_waste' ? 'sanitation'
-        : categoryId == 'streetlights_utilities' ? 'electricity'
-        : categoryId;
     }
 
     function isMatchingOrganizationConcern(concern) {
@@ -491,15 +445,6 @@ service cloud.firestore {
         && history.date is timestamp;
     }
 
-    function isApprovedPublisher() {
-      return hasApprovedProfile()
-        && (
-          staffRole() in ['super_admin', 'mayor', 'lgu', 'barangay_captain', 'barangay_vice_captain', 'barangay_secretary', 'organization']
-          || (staffRole() == 'barangay_councilor'
-            && (!('positionCode' in profile()) || profile().positionCode == 'barangay_kagawad'))
-        );
-    }
-
     function publisherOrganization() {
       let organizationId = ('organizationId' in profile())
         ? profile().organizationId
@@ -564,16 +509,6 @@ service cloud.firestore {
         );
     }
 
-    function validLguDepartmentPublisher() {
-      let department = get(/databases/$(database)/documents/lgu_departments/$(staffDepartmentId())).data;
-      return staffDepartmentId().size() > 0
-        && department.status == 'active'
-        && request.resource.data.departmentId == staffDepartmentId()
-        && request.resource.data.publisherEntityId == staffDepartmentId()
-        && request.resource.data.publisherEntityType == 'lgu_department'
-        && request.resource.data.publisherEntityName == department.publicName;
-    }
-
     function validBarangayAudience() {
       return request.resource.data.visibility == 'targeted'
         && request.resource.data.barangayId is string
@@ -595,10 +530,6 @@ service cloud.firestore {
           || (!('barangayId' in resource.data)
             && resource.data.authorId == request.auth.uid
             && resource.data.targetBarangay == profile().barangay));
-    }
-
-    function validBarangayPublishingStatus() {
-      return request.resource.data.status in ['approved', 'draft', 'scheduled'];
     }
 
     function validPartnerAudience() {
