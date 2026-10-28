@@ -4,12 +4,14 @@ const { auditTheme } = require('./helpers/theme-audit');
 const { writeFileSync } = require('node:fs');
 const { seedThemeRecords } = require('./helpers/theme-records');
 
-test('theme resolves before the bundle, follows System, persists and synchronizes tabs', async ({ page, context }) => {
+test('theme resolves before the bundle, defaults to Light, persists and synchronizes tabs', async ({ page, context }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.route('**/app.bundle.js*', route => route.abort());
   await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('html')).toHaveAttribute('data-theme-preference', 'light');
+  await page.evaluate(() => window.ESugidTheme.set('system'));
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.locator('html')).toHaveAttribute('data-theme-preference', 'system');
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(16, 30, 25)');
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
@@ -21,39 +23,39 @@ test('theme resolves before the bundle, follows System, persists and synchronize
   await second.evaluate(() => window.ESugidTheme.set('light'));
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await second.evaluate(() => localStorage.clear());
-  await expect(page.locator('html')).toHaveAttribute('data-theme-preference', 'system');
+  await expect(page.locator('html')).toHaveAttribute('data-theme-preference', 'light');
 });
 
-test('invalid or unavailable storage safely defaults to System', async ({ page }) => {
+test('invalid or unavailable storage safely defaults to Light', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.addInitScript(() => {
     Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } });
   });
   await page.goto('/');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.evaluate(() => window.ESugidTheme.set('light'));
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.evaluate(() => window.ESugidTheme.set('dark'));
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
-test('invalid saved preferences fall back to System and print keeps the preference', async ({ page }) => {
+test('invalid saved preferences fall back to Light and print keeps the preference', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.addInitScript(() => localStorage.setItem('esugid_theme', 'invalid'));
   await page.goto('/');
-  await expect(page.locator('html')).toHaveAttribute('data-theme-preference', 'system');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme-preference', 'light');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await page.emulateMedia({ media: 'print' });
   await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
   await expect(page.locator('body')).toHaveCSS('color', 'rgb(16, 42, 34)');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 });
 
 test('appearance is keyboard accessible on login and retains focus in its dialog', async ({ page }) => {
   await page.goto('/');
   await page.locator('[data-open-appearance]').click();
-  const system = page.locator('[data-appearance-mode="system"]');
-  await expect(system).toBeFocused();
-  await system.press('Home');
-  await expect(page.locator('[data-appearance-mode="light"]')).toHaveAttribute('aria-checked', 'true');
+  const light = page.locator('[data-appearance-mode="light"]');
+  await expect(light).toBeFocused();
+  await light.press('Home');
+  await expect(light).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.keyboard.press('Tab');

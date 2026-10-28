@@ -20686,14 +20686,6 @@ textarea.field-invalid {
 }
 #announcementForm .wizard-actions { flex-wrap: wrap; }
 
-#announcementForm .urgent-expiration-section {
-  border: 1px solid light-dark(#f2b8b5, var(--errorBorder)) !important;
-  border-radius: 14px !important;
-  padding: 16px !important;
-  background: linear-gradient(135deg, light-dark(#fffafa, var(--surface)) 0%, light-dark(#fff3f2, var(--surfaceAlt)) 100%) !important;
-  animation: urgent-expiration-reveal 180ms ease-out;
-}
-
 .step3-required-badge {
   display: inline-flex;
   margin-left: 6px;
@@ -20706,11 +20698,6 @@ textarea.field-invalid {
   letter-spacing: .04em;
   text-transform: uppercase;
   vertical-align: middle;
-}
-
-@keyframes urgent-expiration-reveal {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .step3-delivery-step {
@@ -20950,41 +20937,6 @@ textarea.field-invalid {
   transform: scale(1) !important;
   background: light-dark(#d97706, var(--warningSolid)) !important;
   box-shadow: 0 2px 6px rgba(217, 119, 6, 0.3) !important;
-}
-
-/* Priority: Urgent (Crimson / Ruby) */
-.priority-card--urgent .pcard-icon-wrap {
-  background: light-dark(#fee2e2, var(--errorSurface)) !important;
-  border-color: light-dark(#fecaca, var(--errorBorder)) !important;
-  color: light-dark(#b52d38, var(--error)) !important;
-}
-
-.priority-card--urgent .pcard-title {
-  color: light-dark(#b52d38, var(--error)) !important;
-}
-
-.priority-card--urgent.active {
-  border-color: light-dark(#dc2626, var(--errorBorder)) !important;
-  background: linear-gradient(165deg, light-dark(#fff5f5, var(--surfaceAlt)) 0%, light-dark(#fee2e2, var(--errorSurface)) 100%) !important;
-  box-shadow:
-    0 0 0 3px rgba(220, 38, 38, 0.16),
-    0 8px 22px -4px rgba(220, 38, 38, 0.28),
-    inset 0 1px 0 light-dark(#ffffff, var(--highlight)) !important;
-  transform: translateY(-2px) !important;
-}
-
-.priority-card--urgent.active .pcard-icon-wrap {
-  background: light-dark(#c93636, var(--errorSolid)) !important;
-  border-color: light-dark(#991b1b, var(--errorBorder)) !important;
-  color: light-dark(#ffffff, var(--onAccent)) !important;
-  box-shadow: 0 4px 10px rgba(220, 38, 38, 0.3) !important;
-}
-
-.priority-card--urgent.active .pcard-indicator {
-  opacity: 1 !important;
-  transform: scale(1) !important;
-  background: light-dark(#c93636, var(--errorSolid)) !important;
-  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.3) !important;
 }
 
 /* 3D Delivery Cards (Send Now vs Schedule) */
@@ -25259,20 +25211,6 @@ body .auth-card .form-message.success {
   font-size: 15px;
 }
 
-.preview-badge-3d--urgent {
-  background: linear-gradient(135deg, light-dark(#c93636, var(--errorSolid)) 0%, light-dark(#b91c1c, var(--errorSolid)) 100%);
-  color: light-dark(#ffffff, var(--onAccent));
-  border: 1px solid light-dark(#dc2626, var(--errorBorder));
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.38), inset 0 1px 0 light-dark(rgba(255,255,255,0.4), var(--highlight));
-  text-shadow: 0 1px 2px rgba(0,0,0,0.25);
-  animation: urgentGlow 2.5s infinite alternate ease-in-out;
-}
-
-@keyframes urgentGlow {
-  0% { box-shadow: 0 3px 10px rgba(220, 38, 38, 0.3), inset 0 1px 0 light-dark(rgba(255,255,255,0.4), var(--highlight)); }
-  100% { box-shadow: 0 6px 16px rgba(220, 38, 38, 0.55), inset 0 1px 0 light-dark(rgba(255,255,255,0.6), var(--highlight)); }
-}
-
 .preview-badge-3d--important {
   background: linear-gradient(135deg, light-dark(#925b00, var(--warningSolid)) 0%, light-dark(#d97706, var(--warningSolid)) 100%);
   color: light-dark(#ffffff, var(--onAccent));
@@ -26480,10 +26418,6 @@ body .auth-card .form-message.success {
 
 #announcementForm .dcard-title {
   font-size: 13px !important;
-}
-
-#announcementForm .urgent-expiration-section {
-  padding: 12px !important;
 }
 
 #announcementForm .datetime-display-btn {

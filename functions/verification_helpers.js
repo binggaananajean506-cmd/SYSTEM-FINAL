@@ -97,12 +97,18 @@ function isValidResidentVerificationDocumentType(value, stage) {
     && INITIAL_RESIDENCY_DOCUMENT_TYPES.has(documentType);
 }
 
+function defaultResidentVerificationPermission(profile) {
+  const role = String(profile?.role || "").trim().toLowerCase();
+  return ["barangay", "barangay_captain", "barangay_vice_captain", "barangay_secretary"].includes(role)
+    || (role === "barangay_councilor" && profile?.canVerifyResidents === true);
+}
+
 function canReviewResidentVerification(reviewer, resident) {
   const reviewerRole = String(reviewer?.role || "").trim().toLowerCase();
   const reviewerBarangayId = effectiveBarangayId(reviewer);
   const residentBarangayId = effectiveBarangayId(resident);
   return RESIDENT_VERIFICATION_REVIEWER_ROLES.has(reviewerRole)
-    && reviewer?.canVerifyResidents === true
+    && defaultResidentVerificationPermission(reviewer)
     && Boolean(reviewerBarangayId)
     && reviewerBarangayId === residentBarangayId;
 }
@@ -135,6 +141,7 @@ module.exports = {
   canManageResidentAccount,
   canRestrictResidentAccount,
   canReviewResidentVerification,
+  defaultResidentVerificationPermission,
   canonicalBarangayName,
   canonicalVerificationStatus,
   effectiveBarangayId,

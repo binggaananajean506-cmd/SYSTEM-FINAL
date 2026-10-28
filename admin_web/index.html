@@ -284,7 +284,7 @@
                 Service</span><input id="registrationLguServiceDescription" maxlength="120"></label>
           </div>
           <label class="auth-field"><span>Contact Number</span><input id="registrationContactNumber" type="tel"
-              inputmode="tel" maxlength="30" autocomplete="tel" required placeholder="09XXXXXXXXX"></label>
+              data-ph-mobile inputmode="numeric" minlength="11" maxlength="11" pattern="09[0-9]{9}" autocomplete="tel" required placeholder="09XXXXXXXXX"></label>
           <label class="auth-field"><span>Email Address</span><input id="registrationEmail" type="email" maxlength="254"
               autocomplete="email" required placeholder="example@email.com"></label>
         </div>
@@ -1584,9 +1584,6 @@
                       <p>Publish immediately or schedule for a specific date and time.</p>
                     </div>
 
-                    <!-- Hidden legacy inputs for compatibility -->
-                    <input type="hidden" id="announcementExpiresAt">
-
                     <!-- When to send (Publishing Schedule) -->
                     <div id="announcementWhenToPublish" class="step3-card-section">
                       <div class="delivery-cards-grid" role="group" aria-label="Send time">
@@ -1753,7 +1750,6 @@
                           <option id="announcementAllImportanceOption" value="all">All Importance</option>
                           <option value="regular">Regular</option>
                           <option value="important">Important</option>
-                          <option value="urgent">Urgent</option>
                         </select>
                       </div>
                     </label>
@@ -2848,7 +2844,7 @@
                       <span>Contact Number <b class="req-star" hidden>*</b></span>
                       <div class="input-with-icon">
                         <span class="material-symbols-rounded">call</span>
-                        <input id="organizationProfileContactNumber" maxlength="30" inputmode="tel"
+                        <input id="organizationProfileContactNumber" type="tel" data-ph-mobile minlength="11" maxlength="11" pattern="09[0-9]{9}" inputmode="numeric"
                           placeholder="09XX XXX XXXX" readonly required>
                       </div>
                     </label>

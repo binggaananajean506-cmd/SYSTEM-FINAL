@@ -195,5 +195,18 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "_resident_signup_challenges",
+      "fieldPath": "deleteAfter",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "_resident_signup_limits",
+      "fieldPath": "deleteAfter",
+      "ttl": true,
+      "indexes": []
+    }
+  ]
 }

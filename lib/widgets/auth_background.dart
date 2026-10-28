@@ -254,13 +254,15 @@ class _CenteredGlassAuthLayout extends StatelessWidget {
                                 color: context.colors.onAccent,
                                 fontSize: 28,
                                 height: 1.1,
-                                fontWeight: FontWeight.w900,
+                                fontWeight: FontWeight.w800,
                                 letterSpacing: -0.4,
+                                // A dark shadow in both modes: textPrimary turns
+                                // near-white in dark mode and made a glow.
                                 shadows: [
                                   Shadow(
-                                    color: context.colors.textPrimary,
-                                    blurRadius: 12,
-                                    offset: Offset(0, 2),
+                                    color: Colors.black.withValues(alpha: 0.22),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 1),
                                   ),
                                 ],
                               ),

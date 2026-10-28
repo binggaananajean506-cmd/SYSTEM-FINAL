@@ -20,7 +20,7 @@ function harness({ policyId = 'department_roads' } = {}) {
   };
   const auth = { currentUser: user };
   const scope = {
-    state, auth, console: { error() {}, warn() {} },
+    state, auth, window: {}, console: { error() {}, warn() {} },
     db: {}, doc: (...args) => args, getDoc: () => policy,
     accessPolicyIdForProfile: () => policyId,
     showDashboard: () => events.push({ action: 'show' }),
@@ -29,6 +29,7 @@ function harness({ policyId = 'department_roads' } = {}) {
     signOut: async () => { events.push({ action: 'signOut' }); auth.currentUser = null; },
     setAuthMessage: message => events.push({ action: 'message', message }),
     showToast: message => events.push({ action: 'toast', message }),
+    openModal: () => events.push({ action: 'retry' }),
     normalize: value => String(value || '').toLowerCase(),
     syncStaffEmailCall: async () => ({ data: { email: user.email } }),
     updateDoc: async () => {}, serverTimestamp: () => 0, arrayUnion: value => value,
@@ -66,14 +67,17 @@ test('a stale policy response cannot initialize or overwrite the next session', 
   expect(h.state.currentAccessPolicy).toEqual({ granted: ['announcements'] });
 });
 
-test('unavailable policy gives retry guidance without enabling default office controls', async () => {
+test('unavailable policy keeps the session signed in with operations locked and a retry', async () => {
   const h = harness();
   const pending = h.finish(h.user);
   h.rejectPolicy(new Error('offline'));
   await pending;
-  expect(h.events.some(event => ['show', 'configure', 'listen'].includes(event.action))).toBe(false);
-  expect(h.events.find(event => event.action === 'message').message).toMatch(/access settings.*connection.*again/i);
-  expect(h.events.some(event => event.action === 'signOut')).toBe(true);
+  expect(h.state.accessPolicyUnavailable).toBe(true);
+  expect(h.events.some(event => event.action === 'listen')).toBe(false);
+  expect(h.events.some(event => event.action === 'show')).toBe(true);
+  expect(h.events.some(event => event.action === 'retry')).toBe(true);
+  expect(h.events.some(event => event.action === 'signOut')).toBe(false);
+  expect(h.auth.currentUser.uid).toBe('staff-a');
 });
 
 test('a failed stale policy request cannot sign out the next user', async () => {
@@ -107,3 +111,47 @@ for (const fails of [false, true]) {
     expect(h.auth.currentUser.uid).toBe('staff-b');
   });
 }
+
+function policyUpdater(h) {
+  const source = readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const start = source.indexOf('function accessPolicySignature(policy) {');
+  const end = source.indexOf('function roleCapabilities(', start);
+  h.scope.clearRealtimeListeners = () => {
+    h.events.push({ action: 'clear' });
+    h.state.sessionGeneration++;
+    h.state.currentAccessPolicy = {};
+    h.state.residentVerifications = [];
+  };
+  return vm.runInNewContext(`${source.slice(start, end)}; applyOfficeAccessPolicy`, h.scope);
+}
+
+test('live office permission changes clear old queue data and keep the signed-in session', () => {
+  const h = harness();
+  const profile = h.state.currentProfile;
+  h.state.residentVerifications = [{ id: 'previously-visible-resident' }];
+  h.state.page = 'verifications';
+  policyUpdater(h)({ denied: ['verifications:local'] });
+  expect(h.auth.currentUser.uid).toBe('staff-a');
+  expect(h.state.currentProfile).toBe(profile);
+  expect(h.state.residentVerifications).toEqual([]);
+  expect(h.state.currentAccessPolicy).toEqual({ denied: ['verifications:local'] });
+  expect(h.events.map(event => event.action)).toEqual(['clear', 'configure', 'listen']);
+});
+
+test('policy timestamps and field ordering do not restart the dashboard', () => {
+  const h = harness();
+  h.state.currentAccessPolicy = { granted: ['concerns', 'verifications:local'], denied: [], updatedAt: 1 };
+  policyUpdater(h)({ denied: [], granted: ['verifications:local', 'concerns'], updatedAt: 2 });
+  expect(h.events).toEqual([]);
+});
+
+test('retrying a failed office policy load restores access without another login', async () => {
+  const h = harness();
+  h.state.accessPolicyUnavailable = true;
+  const pending = h.finish(h.user);
+  h.resolvePolicy({ exists: () => true, data: () => ({ granted: ['verifications:local'] }) });
+  await pending;
+  expect(h.state.accessPolicyUnavailable).toBe(false);
+  expect(h.auth.currentUser.uid).toBe('staff-a');
+  expect(h.events.map(event => event.action)).toEqual(['show', 'configure', 'listen']);
+});

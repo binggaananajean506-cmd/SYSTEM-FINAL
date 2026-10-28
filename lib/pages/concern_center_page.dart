@@ -747,7 +747,7 @@ class _ConcernCenterPageState extends State<ConcernCenterPage> {
                       }
                     },
                     child: Text(
-                      'Back to Concern Center',
+                      'Back to Report Center',
                       style: GoogleFonts.outfit(
                         color: context.colors.textSecondary,
                         fontSize: 14,
@@ -1068,7 +1068,7 @@ class _ConcernCenterPageState extends State<ConcernCenterPage> {
         ? 'My Activity'
         : _concernCenterTab == 2
         ? 'Barangay Board'
-        : 'Concern Center';
+        : 'Report Center';
     final subtitle = null;
 
     return ESugidSliverPageHeader(
@@ -7494,7 +7494,7 @@ class _ConcernCenterPageState extends State<ConcernCenterPage> {
                               const SizedBox(width: 9),
                               Expanded(
                                 child: Text(
-                                  'You can save this report as a draft and safely resume it anytime from your Concern Center.',
+                                  'You can save this report as a draft and safely resume it anytime from your Report Center.',
                                   style: GoogleFonts.poppins(
                                     fontSize: 11,
                                     color: dialogContext.colors.textPrimary,
@@ -7954,7 +7954,7 @@ class _ConcernCenterPageState extends State<ConcernCenterPage> {
                       setState(() => _view = 0);
                     }
                   },
-                  child: const Text('Back to Concern Center'),
+                  child: const Text('Back to Report Center'),
                 ),
               ],
             ),

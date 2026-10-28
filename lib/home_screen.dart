@@ -2515,9 +2515,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildBarangayConcernAction(User user) {
     return Tooltip(
-      message: 'Concern Center',
+      message: 'Report Center',
       child: ESugidPressable(
-        semanticLabel: 'Concern Center',
+        semanticLabel: 'Report Center',
         haptic: ESugidHaptic.light,
         onTap: () {
           Navigator.push(

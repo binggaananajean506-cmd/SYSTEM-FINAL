@@ -242,10 +242,13 @@ service cloud.firestore {
     }
 
     function canVerifyBarangayResidents() {
+      let current = profile();
+      let defaultAllowed = staffRoleFrom(current) in ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary']
+        || (('canVerifyResidents' in current) && current.canVerifyResidents == true);
       return isApprovedBarangayOfficial()
-        && operationalAccess('verifications:local', profile().canVerifyResidents == true)
-        && profile().barangayId is string
-        && profile().barangayId.size() > 0;
+        && operationalAccess('verifications:local', defaultAllowed)
+        && current.barangayId is string
+        && current.barangayId.size() > 0;
     }
 
     function canManageBarangay() {

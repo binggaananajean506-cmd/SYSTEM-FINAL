@@ -4,7 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppThemeController {
   static const _preferenceKey = 'esugid_dark_mode';
   static const _themeModeKey = 'esugid_theme_mode';
-  static final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.system);
+  // Light unless the resident picked a mode; the phone's dark setting is not followed.
+  static final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.light);
   static Future<void> _writes = Future<void>.value();
 
   static Future<void> initialize() async {
@@ -18,9 +19,7 @@ class AppThemeController {
       mode.value = ThemeMode.light;
     } else {
       final legacy = preferences.get(_preferenceKey);
-      mode.value = legacy is bool
-          ? (legacy ? ThemeMode.dark : ThemeMode.light)
-          : ThemeMode.system;
+      mode.value = legacy == true ? ThemeMode.dark : ThemeMode.light;
     }
   }
 

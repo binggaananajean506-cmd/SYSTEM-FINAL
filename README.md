@@ -28,8 +28,8 @@ The Flutter application currently includes only an Android platform project.
 ## Web appearance
 
 The staff console offers Light, Dark, and System from the palette button on
-the sign-in screen and in the workspace header. System is the default and
-follows the device's color scheme. The preference is stored on that browser
+the sign-in screen and in the workspace header. Light is the default, even on
+devices set to dark mode; System follows the device's color scheme. The preference is stored on that browser
 under `esugid_theme`, survives sign-in/sign-out and refreshes, and synchronizes
 between tabs. If browser storage is unavailable, theme switching still works
 for the current page.
@@ -262,7 +262,7 @@ Profile → App Preferences → Theme offers **Light**, **Dark**, and **System
 Default**. The choice updates immediately and is stored on the device using
 SharedPreferences (`esugid_theme_mode`); it survives logout and app restarts.
 Existing `esugid_dark_mode` preferences are supported and migrated on selection.
-New installations use the Android system theme. Preferences load before Flutter
+New installations open in Light, even when the phone uses dark mode. Preferences load before Flutter
 renders its first frame, and the native launch screen uses E-SUGID green.
 
 `lib/app/theme/esugid_clay_theme.dart` owns Material component themes and

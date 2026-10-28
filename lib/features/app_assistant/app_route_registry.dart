@@ -131,7 +131,7 @@ abstract final class AppAssistantRouteRegistry {
     AssistantRouteEntry(
       destination: AssistantDestination.fileConcern,
       title: 'File a Concern',
-      parent: 'Concern Center',
+      parent: 'Report Center',
       description: 'Start the existing official resident concern form.',
       keywords: [
         'file concern',
@@ -146,7 +146,7 @@ abstract final class AppAssistantRouteRegistry {
     AssistantRouteEntry(
       destination: AssistantDestination.myConcerns,
       title: 'My Concerns',
-      parent: 'Concern Center',
+      parent: 'Report Center',
       description: 'Track concerns submitted by the signed-in resident.',
       keywords: [
         'my concern',
@@ -160,7 +160,7 @@ abstract final class AppAssistantRouteRegistry {
     AssistantRouteEntry(
       destination: AssistantDestination.concernDraft,
       title: 'Unfinished Drafts',
-      parent: 'Concern Center > My Concerns',
+      parent: 'Report Center > My Concerns',
       description: 'Resume a concern the signed-in resident explicitly saved.',
       keywords: ['draft', 'unfinished concern', 'continue concern'],
       allowedRoles: _residentOnly,

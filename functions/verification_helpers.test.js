@@ -72,7 +72,7 @@ test("resident document types match the submission stage", () => {
   assert.equal(isValidResidentVerificationDocumentType("Passport", "additional_document"), false);
 });
 
-test("only explicitly authorized officials review residents from their barangay", () => {
+test("barangay leaders and delegated officials review only their own barangay", () => {
   const resident = { role: "resident", barangayId: "barili_cabcaban" };
   assert.equal(canReviewResidentVerification({
     role: "barangay_secretary",
@@ -88,12 +88,36 @@ test("only explicitly authorized officials review residents from their barangay"
     role: "barangay_captain",
     barangayId: "barili_cabcaban",
     canVerifyResidents: false,
-  }, resident), false);
+  }, resident), true);
   assert.equal(canReviewResidentVerification({
     role: "super_admin",
     barangayId: "barili_cabcaban",
     canVerifyResidents: true,
   }, resident), false);
+});
+
+for (const role of ["barangay_captain", "barangay_vice_captain", "barangay_secretary"]) {
+  test(`${role} can review its own residents without the legacy permission flag`, () => {
+    const reviewer = { role, barangay: "Cabcaban", barangayId: "barili_cabcaban" };
+    assert.equal(canReviewResidentVerification(reviewer, { role: "resident", barangayId: "barili_cabcaban" }), true);
+    assert.equal(canReviewResidentVerification(reviewer, { role: "resident", barangayId: "barili_vito" }), false);
+  });
+}
+
+test("all 42 barangays give leaders verification authority only within their assignment", () => {
+  const { BARILI_BARANGAYS, barangayIdFor } = require("./verification_helpers");
+  assert.equal(BARILI_BARANGAYS.length, 42);
+  for (const [index, barangay] of BARILI_BARANGAYS.entries()) {
+    const ownId = barangayIdFor(barangay);
+    const otherId = barangayIdFor(BARILI_BARANGAYS[(index + 1) % BARILI_BARANGAYS.length]);
+    for (const role of ["barangay_captain", "barangay_vice_captain", "barangay_secretary"]) {
+      for (const flag of [undefined, false, true]) {
+        const official = { role, barangay, barangayId: ownId, canVerifyResidents: flag };
+        assert.equal(canReviewResidentVerification(official, { role: "resident", barangayId: ownId }), true, `${barangay}: ${role}`);
+        assert.equal(canReviewResidentVerification(official, { role: "resident", barangayId: otherId }), false, `${barangay}: cross-barangay access`);
+      }
+    }
+  }
 });
 
 test("barangay officials manage only residents with matching verified assignments", () => {

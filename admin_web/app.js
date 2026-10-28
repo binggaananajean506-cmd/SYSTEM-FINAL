@@ -52,6 +52,8 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createComplaintTracking, complaintBucket, complaintNeedsAction } from "./complaint_tracking.mjs";
 import trackingRules from "../functions/complaint_tracking.js";
+import verificationRules from "../functions/verification_helpers.js";
+import { createNotificationReadState } from "./notification_read_state.mjs";
 import { DEFAULT_EMERGENCY_CONTACTS, emergencyHotlineDirectory } from "./emergency_hotlines.mjs";
 import { barangayLogoForCase, MUNICIPALITY_SEAL } from "./barangay_logos.mjs";
 
@@ -69,6 +71,7 @@ const ADMIN_PORTAL_URL = "https://e-sugid.web.app/admin";
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+const notificationReadState = createNotificationReadState(() => window.localStorage);
 const storage = getStorage(app);
 const functions = getFunctions(app, "asia-southeast1");
 const createStaffAccountCall = httpsCallable(functions, "createStaffAccount");
@@ -384,6 +387,33 @@ document.addEventListener("click", (event) => {
   const icon = button.querySelector(".material-symbols-rounded");
   if (icon) icon.textContent = revealing ? "visibility_off" : "visibility";
   button.setAttribute("aria-label", revealing ? "Hide password" : "Show password");
+});
+
+function philippineMobileInput(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("63") && digits.length >= 12) digits = `0${digits.slice(2)}`;
+  return digits.slice(0, 11);
+}
+
+document.addEventListener("input", (event) => {
+  const input = event.target;
+  if (!input.matches?.("input[data-ph-mobile]")) return;
+  const position = input.selectionStart;
+  const cleaned = philippineMobileInput(input.value);
+  if (input.value === cleaned) return;
+  input.value = cleaned;
+  if (position !== null) input.setSelectionRange(Math.min(position, cleaned.length), Math.min(position, cleaned.length));
+});
+
+document.addEventListener("paste", (event) => {
+  const input = event.target;
+  if (!input.matches?.("input[data-ph-mobile]") || !event.clipboardData) return;
+  event.preventDefault();
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? start;
+  input.value = philippineMobileInput(input.value.slice(0, start)
+    + event.clipboardData.getData("text/plain") + input.value.slice(end));
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 });
 
 // ── Registration proof file-card ──────────────────────────────────
@@ -1347,14 +1377,20 @@ async function finishAdministratorAuthorization(user) {
     } catch (error) {
       if (!isCurrentSession()) return;
       console.error("Office access settings could not be loaded", { code: error?.code });
-      await signOut(auth);
-      if (!auth.currentUser) {
-        setAuthMessage("Your office access settings could not be loaded. Check your connection and sign in again.", true);
-      }
+      // A policy/network failure is not a sign-out. Keep the authenticated
+      // session, but do not enable any office operations until policy loads.
+      state.currentAccessPolicy = {};
+      state.accessPolicyUnavailable = true;
+      showDashboard(user);
+      configureRoleAccess();
+      openModal("Office access unavailable", "Your session is still signed in",
+        "<p>Your office access settings could not be loaded. Check your connection and retry. Office actions remain locked until the settings are available.</p>",
+        '<button class="button button--primary" type="button" onclick="retryOfficeAccess(this)">Retry access settings</button>');
       return;
     }
   }
   state.currentAccessPolicy = policy;
+  state.accessPolicyUnavailable = false;
   showDashboard(user);
 
   try {
@@ -1386,6 +1422,18 @@ async function finishAdministratorAuthorization(user) {
     }
   })();
 }
+
+window.retryOfficeAccess = async (button) => {
+  const user = auth.currentUser;
+  if (!user) return;
+  setButtonBusy(button, true, "Retrying…");
+  try {
+    await finishAdministratorAuthorization(user);
+    if (auth.currentUser?.uid === user.uid && !state.accessPolicyUnavailable) closeModal();
+  } finally {
+    setButtonBusy(button, false);
+  }
+};
 
 window.toggleSetupPasswordVisibility = (inputId, button) => {
   const input = byId(inputId);
@@ -1682,7 +1730,21 @@ function clearAnalyticsCache() {
   }
 }
 
+function applyMunicipalCaseRecords(items) {
+  const sorted = [...items].sort((a, b) => dateValue(b.date) - dateValue(a.date));
+  state.concerns = sorted.filter((item) => !isComplaintCase(item));
+  // IT administrators manage complaints across all barangays. Other municipal
+  // dashboards retain their existing concern-only access.
+  state.complaints = isLguAdmin() ? sorted.filter(isComplaintCase) : [];
+  populateConcernFilters();
+  renderDashboard();
+  if (state.page === "concerns") renderConcerns();
+  else if (state.page === "complaints") renderComplaints();
+}
+
 function attachRealtimeListeners() {
+  const generation = state.sessionGeneration;
+  const requesterId = auth.currentUser?.uid;
   const role = canonicalRole(state.currentProfile?.role);
   state.concernFlagNotices = [];
   state.announcementBarangayPosts = [];
@@ -1714,10 +1776,8 @@ function attachRealtimeListeners() {
     const policyId = accessPolicyIdForProfile(state.currentProfile);
     if (policyId) state.unsubscribers.push(onSnapshot(doc(db, "access_policies", policyId), (snapshot) => {
       const next = snapshot.data() || {};
-      if (JSON.stringify(next) === JSON.stringify(state.currentAccessPolicy)) return;
-      // Rebuild every listener and clear cached records when IT changes access.
-      // A reload also prevents a revoked office from retaining sensitive data in memory.
-      window.location.reload();
+      if (generation !== state.sessionGeneration || auth.currentUser?.uid !== requesterId) return;
+      applyOfficeAccessPolicy(next);
     }, (error) => console.error("Access policy listener failed", { code: error?.code })));
   }
 
@@ -1740,15 +1800,8 @@ function attachRealtimeListeners() {
       listen(query(collection(db, "document_requests"), limit(400)), (items) => { state.documentRequests = items.sort((a, b) => requestDate(b) - requestDate(a)); }, (error) => console.error("Document request data could not be loaded.", error));
       listen(query(collection(db, "helpdesk_tickets"), limit(250)), (items) => { state.helpdeskTickets = items.sort((a, b) => requestDate(b) - requestDate(a)); }, (error) => console.error("Helpdesk data could not be loaded.", error));
     }
-    // Municipal View-Only Concern Registry (all 42 barangays)
-    listen(query(collection(db, "submissions"), limit(500)), (items) => {
-      // Exclude formal katarungang pambarangay complaints (complaints against a person) which are private to barangay lupon
-      const concernsOnly = items.filter((item) => !isComplaintCase(item));
-      state.concerns = concernsOnly.sort((a, b) => dateValue(b.date) - dateValue(a.date));
-      populateConcernFilters();
-      renderDashboard();
-      if (state.page === "concerns") renderConcerns();
-    }, renderConcernLoadError);
+    // Municipal concern registry and IT complaint management (all 42 barangays).
+    listen(query(collection(db, "submissions"), limit(500)), applyMunicipalCaseRecords, renderConcernLoadError);
   } else if (isDepartmentLgu) {
     const departmentId = currentDepartmentId();
     if (departmentId) {
@@ -2006,6 +2059,7 @@ function attachRealtimeListeners() {
 function clearRealtimeListeners() {
   state.sessionGeneration++;
   state.currentAccessPolicy = {};
+  state.accessPolicyUnavailable = false;
   state.capabilities = new Set();
   state.verificationsLoading = false;
   state.verificationCounts = { pending: 0, verified: 0, needsResubmission: 0 };
@@ -2487,9 +2541,13 @@ function getNotificationItems() {
   return items;
 }
 
+function notificationViewerId() {
+  return auth.currentUser?.uid || state.currentProfile?.id || state.currentProfile?.uid || "";
+}
+
 function updateNotificationBadgeAndDot() {
   const notificationItems = getNotificationItems();
-  const total = notificationItems.length;
+  const total = notificationReadState.unreadCount(notificationViewerId(), notificationItems);
   const badge = byId("notificationBadge");
   if (badge) {
     badge.textContent = total > 99 ? "99+" : String(total);
@@ -8899,7 +8957,6 @@ function secondaryBarangayPositionLabel(code) {
 function validPhilippineContact(value) {
   let digits = String(value || "").replace(/\D/g, "");
   if (digits.startsWith("63") && digits.length === 12) digits = `0${digits.slice(2)}`;
-  if (digits.length === 10 && digits.startsWith("9")) digits = `0${digits}`;
   return /^09\d{9}$/.test(digits);
 }
 
@@ -9110,7 +9167,7 @@ window.openStaffAccountForm = async (direct = false) => {
         <label class="field detail-item full"><span>Full name</span><input id="staffName" maxlength="120" autocomplete="name" placeholder="Staff member's full name"></label>
         <label class="field detail-item full"><span>Position / designation</span><input id="staffPositionTitle" maxlength="120" placeholder="Example: Tourism Officer"></label>
         <label class="field detail-item"><span>Email address</span><input id="staffEmail" type="email" maxlength="254" autocomplete="email" placeholder="staff@gmail.com"></label>
-        <label class="field detail-item"><span>Contact number</span><input id="staffContactNumber" inputmode="numeric" maxlength="30" autocomplete="tel" placeholder="09XX XXX XXXX"></label>
+        <label class="field detail-item"><span>Contact number</span><input id="staffContactNumber" type="tel" data-ph-mobile minlength="11" pattern="09[0-9]{9}" inputmode="numeric" maxlength="11" autocomplete="tel" placeholder="09XX XXX XXXX"></label>
         <label class="field detail-item"><span>Initial password</span><input id="staffPassword" type="password" minlength="6" maxlength="128" autocomplete="new-password"></label>
         <label class="field detail-item"><span>Confirm password</span><input id="staffPasswordConfirm" type="password" minlength="6" maxlength="128" autocomplete="new-password"></label>
       </div>`,
@@ -9190,7 +9247,7 @@ window.openStaffAccountForm = async (direct = false) => {
             <label for="staffContactNumber">Contact number <span class="req-star">*</span></label>
             <div class="official-req-input-wrap">
               <span class="material-symbols-rounded req-field-icon">call</span>
-              <input id="staffContactNumber" inputmode="numeric" maxlength="30" autocomplete="tel" placeholder="09XX XXX XXXX" required>
+              <input id="staffContactNumber" type="tel" data-ph-mobile minlength="11" pattern="09[0-9]{9}" inputmode="numeric" maxlength="11" autocomplete="tel" placeholder="09XX XXX XXXX" required>
             </div>
           </div>
 
@@ -9257,7 +9314,7 @@ window.openStaffAccountForm = async (direct = false) => {
       <label class="field detail-item full"><span>Full name</span><input id="staffName" maxlength="120" autocomplete="name" placeholder="Official's full name"></label>
       <label id="staffPositionField" class="field detail-item full" hidden><span>Barangay position</span><select id="staffPositionCode"><option value="">Select an allowed position</option>${Object.entries(SECONDARY_BARANGAY_POSITIONS).map(([value, label]) => `<option value="${escapeAttribute(value)}">${escapeHtml(label)}</option>`).join("")}</select><small>Captain and Secretary accounts must be created directly by an authorized municipal administrator.</small></label>
       <label class="field detail-item full"><span>Email address</span><input id="staffEmail" type="email" maxlength="254" autocomplete="email" placeholder="official@barili.gov.ph"></label>
-      <label class="field detail-item full"><span>Contact number</span><input id="staffContactNumber" inputmode="numeric" maxlength="30" autocomplete="tel" placeholder="09XX XXX XXXX"></label>
+      <label class="field detail-item full"><span>Contact number</span><input id="staffContactNumber" type="tel" data-ph-mobile minlength="11" pattern="09[0-9]{9}" inputmode="numeric" maxlength="11" autocomplete="tel" placeholder="09XX XXX XXXX"></label>
       <label class="field detail-item"><span>Initial password</span><input id="staffPassword" type="password" minlength="6" maxlength="128" autocomplete="new-password"></label>
       <label class="field detail-item"><span>Confirm password</span><input id="staffPasswordConfirm" type="password" minlength="6" maxlength="128" autocomplete="new-password"></label>
       <label class="show-passwords detail-item full"><input type="checkbox" onchange="togglePasswordVisibility(['staffPassword','staffPasswordConfirm'], this.checked)">Show passwords</label>
@@ -9653,7 +9710,7 @@ function wizardSingleForm() {
       <label class="wizard-3d-field${wizardFieldClass("contactNumber")}">
         <span class="wizard-field-label">Contact number <small class="opt-tag">(optional)</small></span>
         <div class="wizard-3d-input-wrap">
-          <input id="wizardContactNumber" inputmode="numeric" autocomplete="tel" maxlength="16" value="${escapeAttribute(staffWizard.contactNumber)}" placeholder="09XX XXX XXXX" oninput="clearStaffWizardError('contactNumber',this)">
+          <input id="wizardContactNumber" type="tel" data-ph-mobile minlength="11" pattern="09[0-9]{9}" inputmode="numeric" autocomplete="tel" maxlength="11" value="${escapeAttribute(staffWizard.contactNumber)}" placeholder="09XX XXX XXXX" oninput="clearStaffWizardError('contactNumber',this)">
         </div>
         ${wizardFieldError("contactNumber")}
       </label>
@@ -11028,7 +11085,7 @@ window.openResidentEdit = (id) => {
   closeResidentActionMenus();
   const user = residentAccountForAction(id);
   if (!user) return;
-  openModal("Resident account", "Edit account", `<div class="detail-grid account-edit-grid"><label class="field detail-item full"><span>Full name</span><input id="residentEditName" maxlength="120" value="${escapeAttribute(user.name || "")}"></label><label class="field detail-item full"><span>Login email</span><input id="residentEditEmail" type="email" maxlength="254" value="${escapeAttribute(user.email || "")}"></label><label class="field detail-item"><span>Contact number <small>Optional</small></span><input id="residentEditContact" inputmode="tel" maxlength="30" value="${escapeAttribute(user.contactNumber || "")}"></label><label class="field detail-item full"><span>Address <small>Optional</small></span><input id="residentEditAddress" maxlength="200" value="${escapeAttribute(user.address || "")}"></label><div class="detail-item full"><label>Barangay</label><strong>${escapeHtml(user.barangay || "Not provided")}</strong></div></div>`, `<button class="button button--secondary" type="button" onclick="closeModal()">Cancel</button><button class="button button--primary" type="button" onclick="submitResidentAction('${safeId(id)}', 'edit', this)">Save changes</button>`);
+  openModal("Resident account", "Edit account", `<div class="detail-grid account-edit-grid"><label class="field detail-item full"><span>Full name</span><input id="residentEditName" maxlength="120" value="${escapeAttribute(user.name || "")}"></label><label class="field detail-item full"><span>Login email</span><input id="residentEditEmail" type="email" maxlength="254" value="${escapeAttribute(user.email || "")}"></label><label class="field detail-item"><span>Contact number <small>Optional</small></span><input id="residentEditContact" type="tel" data-ph-mobile minlength="11" pattern="09[0-9]{9}" inputmode="numeric" maxlength="11" value="${escapeAttribute(user.contactNumber || "")}"></label><label class="field detail-item full"><span>Address <small>Optional</small></span><input id="residentEditAddress" maxlength="200" value="${escapeAttribute(user.address || "")}"></label><div class="detail-item full"><label>Barangay</label><strong>${escapeHtml(user.barangay || "Not provided")}</strong></div></div>`, `<button class="button button--secondary" type="button" onclick="closeModal()">Cancel</button><button class="button button--primary" type="button" onclick="submitResidentAction('${safeId(id)}', 'edit', this)">Save changes</button>`);
   protectModalEdits();
 };
 
@@ -11298,11 +11355,15 @@ window.submitVerificationNeedsAttention = (id) => {
 
 window.openVerificationReviewerManager = () => {
   const canDelegate = canonicalRole(state.currentProfile?.role) === "barangay_captain";
-  const reviewers = state.verificationReviewers.map((reviewer) => `<label class="verification-reviewer-row"><span><strong>${escapeHtml(reviewer.name)}</strong><small>${escapeHtml(labelForRole(reviewer.role))}</small></span><span class="verification-reviewer-control"><em>${reviewer.canVerifyResidents ? "Authorized" : "No access"}</em><input type="checkbox" ${reviewer.canVerifyResidents ? "checked" : ""} ${!canDelegate || reviewer.id === auth.currentUser?.uid ? "disabled" : ""} aria-label="Allow ${escapeAttribute(reviewer.name)} to verify residents" onchange="setVerificationPermission('${safeId(reviewer.id)}',this.checked,this)"></span></label>`).join("");
+  const reviewers = state.verificationReviewers.map((reviewer) => {
+    const roleDefault = canManageBarangay(reviewer.role);
+    const authorized = roleDefault || reviewer.canVerifyResidents;
+    return `<label class="verification-reviewer-row"><span><strong>${escapeHtml(reviewer.name)}</strong><small>${escapeHtml(labelForRole(reviewer.role))}</small></span><span class="verification-reviewer-control"><em>${roleDefault ? "Included with this position" : authorized ? "Authorized" : "No access"}</em><input type="checkbox" ${authorized ? "checked" : ""} ${roleDefault || !canDelegate || reviewer.id === auth.currentUser?.uid ? "disabled" : ""} aria-label="Allow ${escapeAttribute(reviewer.name)} to verify residents" onchange="setVerificationPermission('${safeId(reviewer.id)}',this.checked,this)"></span></label>`;
+  }).join("");
   openModal(
     "Barangay Settings",
     "Verification Access",
-    `<p class="modal-lead">Choose which Barangay ${escapeHtml(state.currentProfile?.barangay || "")} officials can review sensitive resident documents.</p><div class="verification-reviewer-list verification-reviewer-manager">${reviewers || '<div class="empty-state">No eligible Barangay staff accounts were found.</div>'}</div>`,
+    `<p class="modal-lead">The captain, vice captain, and secretary can verify residents of Barangay ${escapeHtml(state.currentProfile?.barangay || "")} by default. Additional officials can be authorized below. LGU IT manages office-wide access.</p><div class="verification-reviewer-list verification-reviewer-manager">${reviewers || '<div class="empty-state">No eligible Barangay staff accounts were found.</div>'}</div>`,
     '<button class="button button--secondary" type="button" onclick="closeModal()">Close</button>',
   );
 };
@@ -11422,7 +11483,7 @@ window.openEditUser = (id) => {
     <label class="field detail-item full"><span>Full name</span><input id="editUserName" maxlength="120" value="${escapeAttribute(user.name || "")}"></label>
     <label class="field detail-item full"><span>Login Gmail address</span><input id="editUserEmail" type="email" inputmode="email" maxlength="254" value="${escapeAttribute(user.email || user.username || "")}"></label>
     <label class="field detail-item"><span>Contact email <small>Optional</small></span><input id="editUserContactEmail" type="email" inputmode="email" maxlength="254" value="${escapeAttribute(user.contactEmail || "")}"></label>
-    <label class="field detail-item"><span>Contact number <small>Optional</small></span><input id="editUserContactNumber" inputmode="tel" maxlength="30" value="${escapeAttribute(user.contactNumber || "")}"></label>
+    <label class="field detail-item"><span>Contact number <small>Optional</small></span><input id="editUserContactNumber" type="tel" data-ph-mobile minlength="11" pattern="09[0-9]{9}" inputmode="numeric" maxlength="11" value="${escapeAttribute(user.contactNumber || "")}"></label>
     ${barangayField}${lguFields}${organizationFields}${recipientField}
   </div>`;
   openModal("Account administration", `Edit ${user.name || "account"}`, body, `<button class="button button--secondary" type="button" onclick="closeModal()">Cancel</button><button class="button button--primary" type="button" onclick="saveEditedUser('${safeId(id)}', this)"><span class="material-symbols-rounded">save</span>Save changes</button>`);
@@ -11978,20 +12039,18 @@ function renderAnnouncementAudience() {
   }
 }
 
+function canonicalAnnouncementPriority(priority) {
+  // The retired urgent/pinned mode is treated as a regular announcement.
+  return normalize(priority) === "important" ? "important" : "regular";
+}
+
 function setAnnouncementPriority(priority) {
-  state.announcementPriority = priority;
+  state.announcementPriority = canonicalAnnouncementPriority(priority);
   document.querySelectorAll("[data-priority]").forEach((button) => {
-    const selected = button.dataset.priority === priority;
+    const selected = button.dataset.priority === state.announcementPriority;
     button.classList.toggle("active", selected);
     button.setAttribute("aria-pressed", String(selected));
   });
-  const expirationSection = byId("announcementExpirationSection");
-  if (expirationSection) expirationSection.hidden = priority !== "urgent";
-  if (priority !== "urgent") {
-    const expirationInput = byId("announcementExpiresAt");
-    if (expirationInput) expirationInput.value = "";
-  }
-  syncDateTimeDisplays();
 }
 
 function setAnnouncementDelivery(delivery) {
@@ -12067,9 +12126,6 @@ function announcementFormValues(statusOverride) {
     throw new Error("This audience is outside your organization's approved service area.");
   }
   const publishAt = byId("announcementPublishAt").value ? new Date(byId("announcementPublishAt").value) : null;
-  const urgentPinExpiresAt = state.announcementPriority === "urgent" && byId("announcementExpiresAt").value
-    ? new Date(byId("announcementExpiresAt").value)
-    : null;
   const editingStatus = editingPost ? announcementUiStatus(editingPost) : "";
   const requestedStatus = statusOverride || (editingPost
     ? editingStatus === "draft" ? "draft" : editingStatus === "scheduled" ? "scheduled" : "approved"
@@ -12077,8 +12133,6 @@ function announcementFormValues(statusOverride) {
   const status = isBarangay && state.editingAnnouncementId && !["scheduled", "draft"].includes(requestedStatus) ? "approved" : requestedStatus;
   const effectivePublishAt = status === "scheduled" ? publishAt : null;
   if (status === "scheduled" && (!effectivePublishAt || effectivePublishAt <= new Date())) throw new Error("Choose a future publishing time.");
-  if (urgentPinExpiresAt && urgentPinExpiresAt <= (effectivePublishAt || new Date())) throw new Error("The urgent pin expiration must be later than the publishing time.");
-  if (state.announcementPriority === "urgent" && !urgentPinExpiresAt) throw new Error("Choose when this urgent announcement should stop being pinned.");
   const ctaUrl = byId("announcementCtaUrl")?.value?.trim() || "";
   if (ctaUrl) {
     const parsed = new URL(ctaUrl);
@@ -12122,7 +12176,7 @@ function announcementFormValues(statusOverride) {
     if (eventEndAt - eventStartAt > 14 * 86400000) throw new Error("An event cannot exceed 14 days.");
   }
   return {
-    title, content, targets, publishAt: effectivePublishAt, urgentPinExpiresAt, status,
+    title, content, targets, publishAt: effectivePublishAt, status,
     category: announcementCategory, customCategory, addToCalendar,
     eventStartAt, eventEndAt, eventLocation, eventAllDay, announcementType,
     cta: { label: byId("announcementCtaLabel")?.value?.trim() || "", url: ctaUrl }
@@ -12209,7 +12263,7 @@ async function saveAnnouncement(statusOverride) {
       tag: "OFFICIAL", category: values.category,
       customCategory: values.customCategory || null,
       contentType: "announcement", schemaVersion: 2,
-      priority: state.announcementPriority || "regular", status: values.status,
+      priority: canonicalAnnouncementPriority(state.announcementPriority), status: values.status,
       publishAt: values.publishAt,
       expiresAt: (values.addToCalendar && values.eventEndAt) ? values.eventEndAt : null,
       priorityExpiresAt: null,
@@ -12736,11 +12790,9 @@ byId("previewAnnouncement").addEventListener("click", () => {
     const previewImg = byId("announcementImagePreviewImg");
     const hasImage = Boolean(previewImg?.src && !byId("announcementImagePreviewCard")?.hidden && !previewImg.src.endsWith("#") && previewImg.src !== window.location.href);
 
-    // Priority badge (only if urgent or important)
+    // Only important announcements carry an importance badge.
     let priorityBadge = "";
-    if (state.announcementPriority === "urgent") {
-      priorityBadge = `<span class="preview-badge-3d preview-badge-3d--urgent"><span class="material-symbols-rounded">emergency</span>Urgent</span>`;
-    } else if (state.announcementPriority === "important") {
+    if (canonicalAnnouncementPriority(state.announcementPriority) === "important") {
       priorityBadge = `<span class="preview-badge-3d preview-badge-3d--important"><span class="material-symbols-rounded">priority_high</span>Important</span>`;
     }
 
@@ -13103,7 +13155,7 @@ function announcementEmptyRow() {
   } else if (filter === "advisory") {
     icon = "notifications_off";
     title = "No public advisories found";
-    desc = "There are currently no urgent public notices, service advisories, or alerts.";
+    desc = "There are currently no public notices, service advisories, or alerts.";
     badgeLabel = "Public Advisories";
   } else if (filter === "general") {
     icon = "article";
@@ -13210,7 +13262,7 @@ function renderAnnouncements() {
     })
     .filter((item) => publisher === "all" || publisherGroup(item.authorRole) === publisher)
     .filter((item) => source === "all" || barangayAnnouncementSource(item) === source)
-    .filter((item) => priority === "all" || normalize(item.priority) === priority)
+    .filter((item) => priority === "all" || canonicalAnnouncementPriority(item.priority) === priority)
     .filter((item) => !search || normalize([item.title, item.content, postPublisher(item), announcementDisplayCategory(item), coverageLabel(item)].join(" ")).includes(search));
   const sort = byId("announcementSort").value;
   const announcementDate = (item) => dateValue(item.publishAt || item.publishedAt || item.timestamp || item.createdAt);
@@ -13414,11 +13466,9 @@ window.openAnnouncement = (id) => {
     statusPillHtml = statusPill(status);
   }
 
-  // Priority badge (only if urgent or important)
+  // Only important announcements carry an importance badge.
   let priorityBadge = "";
-  if (item.priority === "urgent") {
-    priorityBadge = `<span class="preview-badge-3d preview-badge-3d--urgent"><span class="material-symbols-rounded">emergency</span>Urgent</span>`;
-  } else if (item.priority === "important") {
+  if (canonicalAnnouncementPriority(item.priority) === "important") {
     priorityBadge = `<span class="preview-badge-3d preview-badge-3d--important"><span class="material-symbols-rounded">priority_high</span>Important</span>`;
   }
 
@@ -13572,7 +13622,6 @@ window.editAnnouncement = (id) => {
   byId("announcementMessageCount").textContent = String((item.content || "").length);
   if (byId("announcementCtaLabel")) byId("announcementCtaLabel").value = item.cta?.label || "";
   if (byId("announcementCtaUrl")) byId("announcementCtaUrl").value = item.cta?.url || "";
-  byId("announcementExpiresAt").value = localDateTimeValue(item.expiresAt || item.priorityExpiresAt);
   byId("announcementNotify").checked = announcementUiStatus(item) !== "published" && item.notificationRequested === true;
   byId("announcementAddToCalendar").checked = item.addToCalendar !== false && !!item.eventStartAt;
   byId("announcementType").value = item.announcementType === "scheduled_activity" ? "event" : item.announcementType || "general";
@@ -13613,7 +13662,7 @@ window.editAnnouncement = (id) => {
     }
   }
   renderAnnouncementAudience();
-  setAnnouncementPriority(["regular", "important", "urgent"].includes(normalize(item.priority)) ? normalize(item.priority) : "regular");
+  setAnnouncementPriority(item.priority);
   const itemStatus = announcementUiStatus(item);
   const scheduled = itemStatus === "scheduled";
   setAnnouncementDelivery(scheduled ? "scheduled" : "now");
@@ -16632,10 +16681,32 @@ function canReviewResidentVerification(item) {
     && needsUserReview(item);
 }
 
+function accessPolicySignature(policy) {
+  return JSON.stringify(["granted", "denied", "verificationBarangayIds"].map(
+    (key) => Array.isArray(policy?.[key]) ? [...new Set(policy[key])].sort() : [],
+  ));
+}
+
+function applyOfficeAccessPolicy(next) {
+  if (!state.accessPolicyUnavailable
+    && accessPolicySignature(next) === accessPolicySignature(state.currentAccessPolicy)) return;
+  if (!auth.currentUser || !state.currentProfile) return;
+  const profile = state.currentProfile;
+  const page = state.page;
+  // Discard data loaded under the previous permissions before reconnecting.
+  clearRealtimeListeners();
+  state.currentProfile = profile;
+  state.currentAccessPolicy = next;
+  state.pendingRoute = page;
+  configureRoleAccess(profile);
+  attachRealtimeListeners();
+}
+
 function roleCapabilities(role, profile = state.currentProfile) {
   const canonical = canonicalRole(role);
+  if (state.accessPolicyUnavailable) return new Set(["dashboard", "settings"]);
   const matrix = {
-    super_admin: ["dashboard", "emergency", "concerns", "announcements", "directory", "structure", "reports", "systemLogs", "settings", "alerts:publish", "users:manage", "organizations:manage", "posts:moderate", "staff:create", "staff:approve", "verifications:oversight", "departments:manage"],
+    super_admin: ["dashboard", "emergency", "concerns", "complaints", "announcements", "directory", "structure", "reports", "systemLogs", "settings", "alerts:publish", "users:manage", "organizations:manage", "posts:moderate", "staff:create", "staff:approve", "verifications:oversight", "departments:manage"],
     mayor: ["dashboard", "concerns", "announcements", "reports", "settings"],
     lgu: ["dashboard", "concerns", "announcements", "directory", "reports", "systemLogs", "settings", "staff:request"],
     barangay_captain: ["dashboard", "emergency", "concerns", "complaints", "announcements", "directory", "reports", "systemLogs", "settings", "staff:request", "alerts:publish", "emergencies:respond", "announcements:local"],
@@ -16694,7 +16765,7 @@ function isLguAdmin() { return canonicalRole(state.currentProfile?.role) === "su
 function isBarangayRole(role) { return ["barangay_captain", "barangay_vice_captain", "barangay_secretary", "barangay_councilor"].includes(canonicalRole(role)); }
 function canVerifyLocalResidents(role, profile = state.currentProfile) {
   const canonical = canonicalRole(role);
-  return isBarangayRole(canonical) && profile?.canVerifyResidents === true;
+  return verificationRules.defaultResidentVerificationPermission({ ...profile, role: canonical });
 }
 function canManageBarangay(role) { return ["barangay_captain", "barangay_vice_captain", "barangay_secretary"].includes(canonicalRole(role)); }
 function isLocalAlertPublisher(role = state.currentProfile?.role) { return isBarangayRole(role); }
@@ -18838,6 +18909,8 @@ function openWorkQueue() {
       </div>`;
 
   openModal(subtitle, "Notifications", contentHtml, `<button class="button button--secondary" type="button" onclick="closeModal()">Close</button>`);
+  notificationReadState.markSeen(notificationViewerId(), items);
+  updateNotificationBadgeAndDot();
 }
 
 window.openConcernFlagNotice = async (id) => {
@@ -19952,21 +20025,6 @@ function syncDateTimeDisplays() {
     byId("alertExpiresAtDisplay").textContent = expireVal ? formatPickerDisplay(expireVal) : "No expiry set (optional)";
   }
 
-  // Announcement Expiration Date
-  const annExpireVal = byId("announcementExpiresAt")?.value;
-  if (byId("announcementExpiresAtDisplay")) {
-    byId("announcementExpiresAtDisplay").textContent = annExpireVal ? formatPickerDisplay(annExpireVal) : "Select pin expiration";
-    byId("announcementExpiresAtDisplay").classList.toggle("has-value", Boolean(annExpireVal));
-  }
-  if (byId("announcementExpiresAtAction")) {
-    byId("announcementExpiresAtAction").innerHTML = annExpireVal
-      ? '<span class="material-symbols-rounded">edit_calendar</span><span>Change</span>'
-      : '<span class="material-symbols-rounded">calendar_month</span><span>Set Expiry</span>';
-  }
-  if (byId("announcementExpiresAtClearBtn")) {
-    byId("announcementExpiresAtClearBtn").hidden = !annExpireVal;
-  }
-
   // Announcement Publish At (Scheduled)
   const annPublishVal = byId("announcementPublishAt")?.value;
   if (byId("announcementPublishAtDisplay")) {
@@ -20024,10 +20082,6 @@ function openDateTimePicker(targetId) {
     title = "Schedule Publication Time";
     targetLabel = "Publish Date & Time";
     showClear = false;
-  } else if (targetId === "announcementExpiresAt") {
-    title = "Announcement Expiration Date";
-    targetLabel = "End Date & Time";
-    showClear = true;
   } else if (targetId === "announcementEventStartAt") {
     title = "Event Date & Schedule";
     targetLabel = "Event Starts";
@@ -20200,16 +20254,6 @@ function initializeAdminV2() {
   renderAlertBarangays(); setDefaultAlertExpiry();
   byId("alertStartAtBtn")?.addEventListener("click", () => openDateTimePicker("alertStartAt"));
   byId("alertExpiresAtBtn")?.addEventListener("click", () => openDateTimePicker("alertExpiresAt"));
-  byId("announcementExpiresAtBtn")?.addEventListener("click", () => openDateTimePicker("announcementExpiresAt"));
-  byId("announcementExpiresAtClearBtn")?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const input = byId("announcementExpiresAt");
-    if (input) {
-      input.value = "";
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    syncDateTimeDisplays();
-  });
   byId("announcementPublishAtBtn")?.addEventListener("click", () => openDateTimePicker("announcementPublishAt"));
   byId("announcementEventStartAtBtn")?.addEventListener("click", () => openDateTimePicker("announcementEventStartAt"));
   byId("announcementEventEndAtBtn")?.addEventListener("click", () => openDateTimePicker("announcementEventEndAt"));

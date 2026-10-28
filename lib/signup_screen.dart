@@ -10,16 +10,42 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_policy.dart';
 import 'auth_service.dart';
+import 'email_otp_verification_screen.dart';
 import 'barili_barangays.dart';
 import 'core/validation/esugid_validators.dart';
 import 'features/verification/domain/residency_verification.dart';
 import 'onboarding_screen.dart';
+import 'signup_draft.dart';
 import 'widgets/esugid_page_header.dart';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 const int _kMinAge = 13;
+final DateFormat _kBirthdateFormat = DateFormat('MM/dd/yyyy');
+
+/// Keeps digits only and inserts the slashes: 05141998 -> 05/14/1998.
+class _BirthdateInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final kept = digits.length > 8 ? digits.substring(0, 8) : digits;
+    final buffer = StringBuffer();
+    for (var i = 0; i < kept.length; i++) {
+      if (i == 2 || i == 4) buffer.write('/');
+      buffer.write(kept[i]);
+    }
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
 const List<String?> _kSuffixOptions = [
   null,
   'Jr.',
@@ -35,7 +61,8 @@ const List<String?> _kSuffixOptions = [
 // ---------------------------------------------------------------------------
 class SignupScreen extends StatefulWidget {
   final bool focusEmail;
-  const SignupScreen({super.key, this.focusEmail = false});
+  final SignupDraft? initialDraft;
+  const SignupScreen({super.key, this.focusEmail = false, this.initialDraft});
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
@@ -90,6 +117,7 @@ class _SignupScreenState extends State<SignupScreen>
 
   // Other controllers
   final _emailController = TextEditingController();
+  final _emailFieldKey = GlobalKey();
   final _emailFocusNode = FocusNode();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -118,13 +146,44 @@ class _SignupScreenState extends State<SignupScreen>
     _shakeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _shakeController, curve: Curves.easeInOut),
     );
+    final draft = widget.initialDraft;
+    if (draft != null) {
+      _firstNameController.text = draft.firstName;
+      _middleNameController.text = draft.middleName;
+      _lastNameController.text = draft.lastName;
+      _selectedSuffix = draft.suffix;
+      _emailController.text = draft.email;
+      _passwordController.text = draft.password;
+      _confirmPasswordController.text = draft.confirmPassword;
+      _barangayController.text = draft.barangay;
+      _selectedBirthdate = draft.birthDate;
+      _acceptedPolicies = draft.acceptedPolicies;
+      if (draft.birthDate != null) {
+        _birthdateController.text = _kBirthdateFormat.format(draft.birthDate!);
+        _calculatedAge = _computeAge(draft.birthDate!);
+      }
+    } else {
+      AuthService.cancelPendingSignup();
+    }
     _passwordController.addListener(_onPasswordChanged);
     _confirmPasswordController.addListener(_onPasswordChanged);
     if (widget.focusEmail) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _emailFocusNode.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final fieldContext = _emailFieldKey.currentContext;
+        if (fieldContext != null) {
+          await Scrollable.ensureVisible(
+            fieldContext,
+            alignment: 0.25,
+            duration: const Duration(milliseconds: 250),
+          );
         }
+        if (!mounted) return;
+        _emailFocusNode.requestFocus();
+        _emailController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _emailController.text.length,
+        );
       });
     }
   }
@@ -192,12 +251,15 @@ class _SignupScreenState extends State<SignupScreen>
       initialDate: initialDate,
       firstDate: DateTime(1900),
       lastDate: now,
+      // Typing happens in the sign-up field, which formats MM/DD/YYYY.
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
       helpText: 'SELECT DATE OF BIRTH',
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: Theme.of(context).colorScheme,
           textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(foregroundColor: context.colors.primaryGreen,
+            style: TextButton.styleFrom(
+              foregroundColor: context.colors.primaryGreen,
             ),
           ),
         ),
@@ -206,32 +268,60 @@ class _SignupScreenState extends State<SignupScreen>
     );
 
     if (picked != null) {
-      final calculated = _computeAge(picked);
-      setState(() {
-        _selectedBirthdate = picked;
-        _calculatedAge = calculated;
-        _birthdateController.text = DateFormat('MMMM d, yyyy').format(picked);
-      });
+      _birthdateController.text = _kBirthdateFormat.format(picked);
+      _applyBirthdate(picked);
+    }
+  }
 
-      final wireDate = storedBirthDateValue(picked);
-      AuthService.cacheBirthDateInMemory(wireDate: wireDate);
-      SharedPreferences.getInstance()
-          .then((prefs) {
-            prefs.setString('last_signup_birth_date', wireDate);
-            final email = _emailController.text.trim().toLowerCase();
-            if (email.isNotEmpty) {
-              prefs.setString('user_birth_date_$email', wireDate);
-            }
-            final name = _fullName.trim().toLowerCase();
-            if (name.isNotEmpty) {
-              prefs.setString('user_birth_date_$name', wireDate);
-            }
-          })
-          .catchError((_) {});
-
-      if (calculated < _kMinAge) {
-        _triggerAgeShake();
+  /// Typed dates count only when complete and real (no 02/30, no future).
+  void _onBirthdateTyped(String value) {
+    DateTime? parsed;
+    if (value.length == 10) {
+      try {
+        parsed = _kBirthdateFormat.parseStrict(value);
+      } on FormatException {
+        parsed = null;
       }
+      if (parsed != null &&
+          (parsed.isAfter(DateTime.now()) || parsed.year < 1900)) {
+        parsed = null;
+      }
+    }
+    if (parsed != null) {
+      _applyBirthdate(parsed);
+    } else if (_selectedBirthdate != null || _calculatedAge != null) {
+      setState(() {
+        _selectedBirthdate = null;
+        _calculatedAge = null;
+      });
+    }
+  }
+
+  void _applyBirthdate(DateTime picked) {
+    final calculated = _computeAge(picked);
+    setState(() {
+      _selectedBirthdate = picked;
+      _calculatedAge = calculated;
+    });
+
+    final wireDate = storedBirthDateValue(picked);
+    AuthService.cacheBirthDateInMemory(wireDate: wireDate);
+    SharedPreferences.getInstance()
+        .then((prefs) {
+          prefs.setString('last_signup_birth_date', wireDate);
+          final email = _emailController.text.trim().toLowerCase();
+          if (email.isNotEmpty) {
+            prefs.setString('user_birth_date_$email', wireDate);
+          }
+          final name = _fullName.trim().toLowerCase();
+          if (name.isNotEmpty) {
+            prefs.setString('user_birth_date_$name', wireDate);
+          }
+        })
+        .catchError((_) {});
+
+    if (calculated < _kMinAge) {
+      _triggerAgeShake();
     }
   }
 
@@ -366,8 +456,26 @@ class _SignupScreenState extends State<SignupScreen>
     if (!mounted) return;
 
     if (errorMessage == null) {
-      _showSnackBar('Account created. Verify your email to continue.');
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      SignupDraftStore.remember(
+        SignupDraft(
+          firstName: _firstNameController.text,
+          middleName: _middleNameController.text,
+          lastName: _lastNameController.text,
+          suffix: _selectedSuffix,
+          email: _emailController.text,
+          password: _passwordController.text,
+          confirmPassword: _confirmPasswordController.text,
+          birthDate: _selectedBirthdate,
+          barangay: _barangayController.text,
+          acceptedPolicies: _acceptedPolicies,
+        ),
+      );
+      _showSnackBar('Verify your email to finish setting up your account.');
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => const EmailOtpVerificationScreen(),
+        ),
+      );
     } else {
       _showSnackBar(errorMessage, isError: true);
     }
@@ -431,14 +539,16 @@ class _SignupScreenState extends State<SignupScreen>
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: context.colors.brandStrong.withValues(alpha: 0.08,
+                          color: context.colors.brandStrong.withValues(
+                            alpha: 0.08,
                           ),
                           blurRadius: 28,
                           offset: const Offset(0, 12),
                           spreadRadius: 0,
                         ),
                         BoxShadow(
-                          color: context.colors.brandStrong.withValues(alpha: 0.03,
+                          color: context.colors.brandStrong.withValues(
+                            alpha: 0.03,
                           ),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
@@ -544,10 +654,9 @@ class _SignupScreenState extends State<SignupScreen>
     ScaffoldMessenger.of(context).showAppSnackBar(
       AppSnackBar(
         content: Text(
-                'Must be at least $_kMinAge years old to sign up.',
-                style: GoogleFonts.outfit(fontSize: 13,
-                  fontWeight: FontWeight.w600),
-              ),
+          'Must be at least $_kMinAge years old to sign up.',
+          style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
         duration: const Duration(seconds: 3),
         kind: FeedbackKind.warning,
       ),
@@ -600,7 +709,8 @@ class _SignupScreenState extends State<SignupScreen>
         : (confirmMatches ? context.colors.primaryGreen : context.colors.error);
     final confirmFillColor = !hasConfirmText
         ? null
-        : (confirmMatches ? context.colors.surfaceAlt
+        : (confirmMatches
+              ? context.colors.surfaceAlt
               : context.colors.errorSurface);
     final confirmIconColor = !hasConfirmText
         ? null
@@ -910,26 +1020,22 @@ class _SignupScreenState extends State<SignupScreen>
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(
-                color: context.colors.border,
-                width: 1.2),
+              borderSide: BorderSide(color: context.colors.border, width: 1.2),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(color: context.colors.primaryGreen, width: 1.8,
+              borderSide: BorderSide(
+                color: context.colors.primaryGreen,
+                width: 1.8,
               ),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(
-                color: context.colors.error,
-                width: 1.2),
+              borderSide: BorderSide(color: context.colors.error, width: 1.2),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(
-                color: context.colors.error,
-                width: 1.8),
+              borderSide: BorderSide(color: context.colors.error, width: 1.8),
             ),
             helperText: 'Optional',
             helperStyle: GoogleFonts.outfit(
@@ -1011,11 +1117,15 @@ class _SignupScreenState extends State<SignupScreen>
         TextFormField(
           key: const ValueKey('signup-dob-field'),
           controller: _birthdateController,
-          readOnly: true,
-          onTap: _pickBirthdate,
+          keyboardType: TextInputType.number,
+          inputFormatters: [_BirthdateInputFormatter()],
+          onChanged: _onBirthdateTyped,
           validator: (v) {
             if (v == null || v.trim().isEmpty) {
               return 'Date of birth is required';
+            }
+            if (_selectedBirthdate == null) {
+              return 'Enter a real date as MM/DD/YYYY';
             }
             if (_isTooYoung) {
               return 'Must be at least $_kMinAge years old';
@@ -1028,7 +1138,7 @@ class _SignupScreenState extends State<SignupScreen>
             color: context.colors.textPrimary,
           ),
           decoration: InputDecoration(
-            hintText: 'MM / DD / YYYY',
+            hintText: 'MM/DD/YYYY',
             hintStyle: GoogleFonts.outfit(
               color: context.colors.textSecondary,
               fontSize: 12.5,
@@ -1065,26 +1175,22 @@ class _SignupScreenState extends State<SignupScreen>
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(
-                color: context.colors.border,
-                width: 1.2),
+              borderSide: BorderSide(color: context.colors.border, width: 1.2),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(color: context.colors.primaryGreen, width: 1.8,
+              borderSide: BorderSide(
+                color: context.colors.primaryGreen,
+                width: 1.8,
               ),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(
-                color: context.colors.error,
-                width: 1.2),
+              borderSide: BorderSide(color: context.colors.error, width: 1.2),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(
-                color: context.colors.error,
-                width: 1.8),
+              borderSide: BorderSide(color: context.colors.error, width: 1.8),
             ),
           ),
         ),
@@ -1128,7 +1234,8 @@ class _SignupScreenState extends State<SignupScreen>
                 boxShadow: _isTooYoung
                     ? [
                         BoxShadow(
-                          color: context.colors.errorSolid.withValues(alpha: 0.18,
+                          color: context.colors.errorSolid.withValues(
+                            alpha: 0.18,
                           ),
                           blurRadius: 8,
                           spreadRadius: 1,
@@ -1158,7 +1265,8 @@ class _SignupScreenState extends State<SignupScreen>
                     _isTooYoung
                         ? Icons.error_outline_rounded
                         : Icons.hourglass_bottom_rounded,
-                    color: _isTooYoung ? context.colors.error
+                    color: _isTooYoung
+                        ? context.colors.error
                         : context.colors.primaryGreen,
                     size: 19,
                   ),
@@ -1245,7 +1353,8 @@ class _SignupScreenState extends State<SignupScreen>
                   borderRadius: BorderRadius.circular(9),
                   boxShadow: [
                     BoxShadow(
-                      color: context.colors.warningSolid.withValues(alpha: 0.25,
+                      color: context.colors.warningSolid.withValues(
+                        alpha: 0.25,
                       ),
                       blurRadius: 4,
                       offset: const Offset(0, 1.5),
@@ -1323,6 +1432,7 @@ class _SignupScreenState extends State<SignupScreen>
     FocusNode? focusNode,
   }) {
     final fieldInput = TextFormField(
+      key: focusNode == _emailFocusNode ? _emailFieldKey : null,
       controller: controller,
       focusNode: focusNode,
       enabled: enabled,
@@ -1373,24 +1483,19 @@ class _SignupScreenState extends State<SignupScreen>
         filled: true,
         fillColor: !enabled
             ? (context.colors.inputBackground)
-            : (customFillColor ??
-                  (context.colors.inputBackground)),
+            : (customFillColor ?? (context.colors.inputBackground)),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
           vertical: 15,
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(13),
-          borderSide: BorderSide(
-            color: context.colors.border,
-            width: 1.2),
+          borderSide: BorderSide(color: context.colors.border, width: 1.2),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(13),
           borderSide: BorderSide(
-            color:
-                customBorderColor ??
-                (context.colors.border),
+            color: customBorderColor ?? (context.colors.border),
             width: customBorderColor != null ? 1.6 : 1.2,
           ),
         ),
@@ -1599,7 +1704,8 @@ class _SignupScreenState extends State<SignupScreen>
                   children: [
                     Icon(
                       Icons.location_on_outlined,
-                      color: enabled ? context.colors.primaryGreen
+                      color: enabled
+                          ? context.colors.primaryGreen
                           : context.colors.textSecondary,
                       size: 19,
                     ),
@@ -1663,7 +1769,8 @@ class _SignupScreenState extends State<SignupScreen>
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 10, 14, 10),
         decoration: BoxDecoration(
-          color: enabled ? context.colors.surfaceAlt
+          color: enabled
+              ? context.colors.surfaceAlt
               : context.colors.surfaceAlt,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
@@ -1950,7 +2057,8 @@ class _BarangayPickerSheetState extends State<_BarangayPickerSheet> {
                             width: 44,
                             height: 4.5,
                             decoration: BoxDecoration(
-                              color: context.colors.warningSolid.withValues(alpha: 0.6,
+                              color: context.colors.warningSolid.withValues(
+                                alpha: 0.6,
                               ),
                               borderRadius: BorderRadius.circular(99),
                             ),
@@ -1964,11 +2072,13 @@ class _BarangayPickerSheetState extends State<_BarangayPickerSheet> {
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: context.colors.surface.withValues(alpha: 0.12,
+                                color: context.colors.surface.withValues(
+                                  alpha: 0.12,
                                 ),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: context.colors.border.withValues(alpha: 0.22,
+                                  color: context.colors.border.withValues(
+                                    alpha: 0.22,
                                   ),
                                 ),
                               ),
@@ -2011,7 +2121,8 @@ class _BarangayPickerSheetState extends State<_BarangayPickerSheet> {
                               child: Container(
                                 padding: const EdgeInsets.all(6),
                                 decoration: BoxDecoration(
-                                  color: context.colors.surface.withValues(alpha: 0.15,
+                                  color: context.colors.surface.withValues(
+                                    alpha: 0.15,
                                   ),
                                   shape: BoxShape.circle,
                                 ),
@@ -2033,7 +2144,8 @@ class _BarangayPickerSheetState extends State<_BarangayPickerSheet> {
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: context.colors.shadow.withValues(alpha: 0.22,
+                                color: context.colors.shadow.withValues(
+                                  alpha: 0.22,
                                 ),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
@@ -2174,7 +2286,9 @@ class _BarangayPickerSheetState extends State<_BarangayPickerSheet> {
                                           ],
                                         )
                                       : null,
-                                  color: isSelected ? null : context.colors.surface,
+                                  color: isSelected
+                                      ? null
+                                      : context.colors.surface,
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(
                                     color: isSelected
@@ -2242,8 +2356,7 @@ class _BarangayPickerSheetState extends State<_BarangayPickerSheet> {
                                             style: GoogleFonts.outfit(
                                               color: isSelected
                                                   ? context.colors.onAccent
-                                                        .withValues(
-                                                      alpha: 0.8)
+                                                        .withValues(alpha: 0.8)
                                                   : context
                                                         .colors
                                                         .textSecondary,

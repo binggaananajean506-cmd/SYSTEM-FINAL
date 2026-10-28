@@ -566,16 +566,7 @@ class _LoginScreenState extends State<LoginScreen> {
               fontSize: 14,
               fontWeight: FontWeight.w400,
             ),
-            prefixIcon: Container(
-              margin: const EdgeInsets.only(left: 10, right: 10),
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: context.colors.surfaceAlt,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: context.colors.primaryGreen, size: 18),
-            ),
+            prefixIcon: Icon(icon, color: context.colors.primaryGreen, size: 20),
             prefixIconConstraints: const BoxConstraints(
               minWidth: 52,
               minHeight: 48,

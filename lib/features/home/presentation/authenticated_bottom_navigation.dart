@@ -109,7 +109,7 @@ class AuthenticatedBottomNavigation extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              user.role == UserRole.resident ? 'CONCERN' : 'POST',
+                              user.role == UserRole.resident ? 'REPORT' : 'POST',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               textAlign: TextAlign.center,

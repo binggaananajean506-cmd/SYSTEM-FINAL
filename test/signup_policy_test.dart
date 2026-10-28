@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:esugid/signup_screen.dart';
 
@@ -99,6 +100,42 @@ void main() {
 
     expect(find.text('Vito'), findsOneWidget);
     expect(find.text('Select your barangay'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('typed birthdays format as MM/DD/YYYY and reject impossible dates', (
+    WidgetTester tester,
+  ) async {
+    usePhoneSize(tester);
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(const MaterialApp(home: SignupScreen()));
+    await tester.pumpAndSettle();
+
+    final dob = find.byKey(const ValueKey('signup-dob-field'));
+    await tester.scrollUntilVisible(
+      dob,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    await tester.enterText(dob, '05141998');
+    await tester.pump();
+    expect(find.text('05/14/1998'), findsOneWidget);
+    final today = DateTime.now();
+    final birthdayPassed = today.month > 5 || (today.month == 5 && today.day >= 14);
+    final age = today.year - 1998 - (birthdayPassed ? 0 : 1);
+    expect(find.text('$age'), findsOneWidget);
+
+    await tester.enterText(dob, '5555555');
+    await tester.pump();
+    expect(find.text('55/55/555'), findsOneWidget);
+    expect(find.text('$age'), findsNothing);
+
+    await tester.enterText(dob, '02302000');
+    await tester.pump();
+    expect(find.text('02/30/2000'), findsOneWidget);
+    expect(find.text('26'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

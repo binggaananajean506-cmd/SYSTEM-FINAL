@@ -413,22 +413,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 fontSize: 14,
                                 fontWeight: FontWeight.w400,
                               ),
-                              prefixIcon: Container(
-                                margin: const EdgeInsets.only(
-                                  left: 12,
-                                  right: 12,
-                                ),
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: context.colors.surfaceAlt,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                  Icons.alternate_email_rounded,
-                                  color: context.colors.textPrimary,
-                                  size: 19,
-                                ),
+                              prefixIcon: Icon(
+                                Icons.alternate_email_rounded,
+                                color: context.colors.primaryGreen,
+                                size: 20,
                               ),
                               prefixIconConstraints: const BoxConstraints(
                                 minWidth: 54,

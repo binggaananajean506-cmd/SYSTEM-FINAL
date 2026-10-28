@@ -37,6 +37,8 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
+      expect(find.text('REPORT'), findsOneWidget);
+      expect(find.text('CONCERN'), findsNothing);
     });
   }
 

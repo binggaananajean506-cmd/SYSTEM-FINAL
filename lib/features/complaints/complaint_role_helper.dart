@@ -10,6 +10,71 @@ import '../../submission_service.dart';
 class ComplaintRoleHelper {
   ComplaintRoleHelper._();
 
+  /// History IDs identify actors; only explicit name fields are display names.
+  static String historyActorLabel(
+    Map<String, dynamic> entry,
+    Submission submission, {
+    String? viewerId,
+    String? viewerName,
+  }) {
+    String text(dynamic value) => value?.toString().trim() ?? '';
+    final actorId = text(entry['actorId']).isNotEmpty
+        ? text(entry['actorId'])
+        : text(entry['performedBy']).isNotEmpty
+        ? text(entry['performedBy'])
+        : text(entry['updatedBy']);
+    final identifiers = {
+      actorId,
+      text(entry['performedBy']),
+      text(entry['updatedBy']),
+      text(submission.userId),
+      text(submission.createdBy),
+      text(viewerId),
+    }..remove('');
+    String? displayName(dynamic value) {
+      final name = text(value);
+      return name.isEmpty || identifiers.contains(name) ? null : name;
+    }
+
+    final status = text(entry['status']).toLowerCase();
+    final action = text(entry['action']).toLowerCase();
+    final filing =
+        ['filed', 'new', 'submitted'].contains(status) ||
+        [
+          'file_complaint',
+          'complaint_filed',
+          'submit_complaint',
+        ].contains(action);
+    final rawRole = text(entry['actorRole'] ?? entry['actorType']);
+    final complainant = actorId.isNotEmpty
+        ? actorId == submission.userId || actorId == submission.createdBy
+        : filing &&
+              (rawRole.isEmpty ||
+                  ['resident', 'complainant'].contains(rawRole.toLowerCase()));
+    final role = complainant
+        ? 'Resident'
+        : rawRole.isNotEmpty && !identifiers.contains(rawRole)
+        ? formatRole(rawRole)
+        : fallbackRole(action: action, status: status);
+    var name =
+        displayName(entry['actorName']) ??
+        displayName(entry['performedByName']) ??
+        displayName(entry['updatedByName']);
+    if (name == null && complainant) {
+      name = displayName(submission.residentName);
+    }
+    if (name == null &&
+        viewerId?.isNotEmpty == true &&
+        (actorId == viewerId ||
+            (complainant && submission.isAssociatedWithUser(viewerId)))) {
+      name = displayName(viewerName);
+    }
+    if (role == 'Resident') {
+      return '${filing ? 'Filed' : 'Updated'} by ${name ?? 'Resident'}';
+    }
+    return name == null ? role : '$name · $role';
+  }
+
   static final Map<String, String> _roleCache = {};
 
   /// Resolves the role dynamically from the authorized user's account or entry.
@@ -32,7 +97,9 @@ class ComplaintRoleHelper {
     }
 
     // 2. Check memory cache for previously fetched user roles
-    if (actorId != null && actorId.isNotEmpty && _roleCache.containsKey(actorId)) {
+    if (actorId != null &&
+        actorId.isNotEmpty &&
+        _roleCache.containsKey(actorId)) {
       return _roleCache[actorId]!;
     }
 
@@ -51,29 +118,32 @@ class ComplaintRoleHelper {
     }
 
     // 5. Fallback based on actor name hints, workflow status, or action
-    return fallbackRole(
-      action: action,
-      status: status,
-      actorName: actorName,
-    );
+    return fallbackRole(action: action, status: status, actorName: actorName);
   }
 
   static void _fetchUserRole(String userId) {
     if (_roleCache.containsKey(userId)) return;
     try {
-      FirebaseFirestore.instance.collection('users').doc(userId).get().then((doc) {
-        if (!doc.exists || doc.data() == null) return;
-        final data = doc.data()!;
-        final posTitle = data['positionTitle']?.toString().trim();
-        final staffRole = (data['staffRole'] ?? data['role'])?.toString().trim();
-        final chosen = (posTitle != null && posTitle.isNotEmpty)
-            ? posTitle
-            : (staffRole ?? '');
-        final resolved = formatRole(chosen);
-        _roleCache[userId] = resolved;
-      }).catchError((_) {
-        // Silently preserve offline/rule fallback
-      });
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get()
+          .then((doc) {
+            if (!doc.exists || doc.data() == null) return;
+            final data = doc.data()!;
+            final posTitle = data['positionTitle']?.toString().trim();
+            final staffRole = (data['staffRole'] ?? data['role'])
+                ?.toString()
+                .trim();
+            final chosen = (posTitle != null && posTitle.isNotEmpty)
+                ? posTitle
+                : (staffRole ?? '');
+            final resolved = formatRole(chosen);
+            _roleCache[userId] = resolved;
+          })
+          .catchError((_) {
+            // Silently preserve offline/rule fallback
+          });
     } catch (_) {}
   }
 
@@ -84,12 +154,22 @@ class ComplaintRoleHelper {
 
     if (lower.contains('lupon')) return 'Barangay Lupon';
     if (lower.contains('tanod')) return 'Barangay Tanod';
-    if (lower.contains('captain') || lower.contains('punong')) return 'Punong Barangay';
+    if (lower.contains('vice') && lower.contains('captain')) {
+      return 'Barangay Vice Captain';
+    }
+    if (lower.contains('captain') || lower.contains('punong')) {
+      return 'Punong Barangay';
+    }
     if (lower.contains('secretary')) return 'Barangay Secretary';
-    if (lower.contains('councilor') || lower.contains('kagawad')) return 'Barangay Councilor';
+    if (lower.contains('councilor') || lower.contains('kagawad')) {
+      return 'Barangay Councilor';
+    }
     if (lower.contains('treasurer')) return 'Barangay Treasurer';
     if (lower == 'resident' || lower == 'complainant') return 'Resident';
-    if (lower == 'super_admin' || lower == 'admin' || lower == 'lgu' || lower.contains('official')) {
+    if (lower == 'super_admin' ||
+        lower == 'admin' ||
+        lower == 'lgu' ||
+        lower.contains('official')) {
       return 'Barangay Official';
     }
     if (lower.contains('barangay')) return 'Barangay Official';
@@ -111,27 +191,44 @@ class ComplaintRoleHelper {
     // If actorName contained role keywords (e.g. "Barangay Tanod on duty")
     if (name.contains('tanod')) return 'Barangay Tanod';
     if (name.contains('lupon')) return 'Barangay Lupon';
-    if (name.contains('captain') || name.contains('punong')) return 'Punong Barangay';
+    if (name.contains('captain') || name.contains('punong')) {
+      return 'Punong Barangay';
+    }
     if (name.contains('secretary')) return 'Barangay Secretary';
-    if (name.contains('councilor') || name.contains('kagawad')) return 'Barangay Councilor';
+    if (name.contains('councilor') || name.contains('kagawad')) {
+      return 'Barangay Councilor';
+    }
 
-    if (act.contains('tanod') || act.contains('deliver') || st.contains('tanod') || st.contains('deliver')) {
+    if (act.contains('tanod') ||
+        act.contains('deliver') ||
+        st.contains('tanod') ||
+        st.contains('deliver')) {
       return 'Barangay Tanod';
     }
-    if (act.contains('hearing') || act.contains('mediation') || act.contains('schedule') || st.contains('hearing')) {
+    if (act.contains('hearing') ||
+        act.contains('mediation') ||
+        act.contains('schedule') ||
+        st.contains('hearing')) {
       return 'Barangay Lupon';
     }
     if (act.contains('summons') || st.contains('summons')) {
       return 'Barangay Official';
     }
-    if (act.contains('filed') || act.contains('submit') || st.contains('filed') || st.contains('new')) {
+    if (act.contains('filed') ||
+        act.contains('submit') ||
+        st.contains('filed') ||
+        st.contains('new')) {
       return 'Resident';
     }
     return 'Barangay Official';
   }
 
   /// Maps technical timeline status strings into simplified, resident-friendly titles.
-  static String simplifyStatus(String rawStatus, {String? action, String? label}) {
+  static String simplifyStatus(
+    String rawStatus, {
+    String? action,
+    String? label,
+  }) {
     final s = rawStatus.toLowerCase().trim();
     final a = (action ?? '').toLowerCase().trim();
     final l = (label ?? '').toLowerCase().trim();
@@ -175,23 +272,32 @@ class ComplaintRoleHelper {
       return 'Complaint Filed';
     }
 
-    if (s.contains('needs_information') || s.contains('awaiting_resident') || a.contains('request_information')) {
+    if (s.contains('needs_information') ||
+        s.contains('awaiting_resident') ||
+        a.contains('request_information')) {
       return 'Information Requested';
     }
 
-    if (s.contains('resolved') || s.contains('settled') || a.contains('resolve')) {
+    if (s.contains('resolved') ||
+        s.contains('settled') ||
+        a.contains('resolve')) {
       return 'Complaint Resolved';
     }
 
-    if (s.contains('unsettled') || s.contains('closed') || a.contains('close')) {
+    if (s.contains('unsettled') ||
+        s.contains('closed') ||
+        a.contains('close')) {
       return 'Case Closed';
     }
 
-    if (s.contains('awaiting_next_schedule') || s.contains('for_next_hearing')) {
+    if (s.contains('awaiting_next_schedule') ||
+        s.contains('for_next_hearing')) {
       return 'Awaiting Next Schedule';
     }
 
-    return label?.isNotEmpty == true ? label! : complaintTrackingStatusLabel(rawStatus);
+    return label?.isNotEmpty == true
+        ? label!
+        : complaintTrackingStatusLabel(rawStatus);
   }
 
   /// Friendly, short date format (e.g. "Oct 13, 2026").
@@ -217,7 +323,8 @@ class ComplaintRoleHelper {
     if (rawTime == null) return '';
     final text = rawTime.toString().trim();
     if (text.isEmpty) return '';
-    if (text.toUpperCase().contains('AM') || text.toUpperCase().contains('PM')) {
+    if (text.toUpperCase().contains('AM') ||
+        text.toUpperCase().contains('PM')) {
       return text;
     }
     final parts = text.split(':');

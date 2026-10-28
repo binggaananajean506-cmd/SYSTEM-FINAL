@@ -54,7 +54,8 @@ class ESugidAppearance(private val context: Context) : AutoCloseable {
             "light" -> false
             "dark" -> true
             "system" -> systemDark
-            else -> saved["flutter.esugid_dark_mode"] as? Boolean ?: systemDark
+            // No saved choice: light, matching AppThemeController.
+            else -> saved["flutter.esugid_dark_mode"] as? Boolean ?: false
         }
         val configuration = Configuration(context.resources.configuration).apply {
             uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or

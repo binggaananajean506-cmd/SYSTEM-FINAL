@@ -23,12 +23,12 @@ void main() {
   });
 
   test(
-    'new installations and malformed preferences use the system theme',
+    'new installations and malformed preferences use the light theme',
     () async {
-      expect(AppThemeController.mode.value, ThemeMode.system);
+      expect(AppThemeController.mode.value, ThemeMode.light);
       SharedPreferences.setMockInitialValues({'esugid_theme_mode': 12});
       await AppThemeController.initialize();
-      expect(AppThemeController.mode.value, ThemeMode.system);
+      expect(AppThemeController.mode.value, ThemeMode.light);
     },
   );
 
@@ -163,11 +163,12 @@ void main() {
           ),
         ),
       );
+      // A dark phone still opens in light until the resident picks a mode.
       dispatcher.platformBrightnessTestValue = Brightness.dark;
       await tester.pumpAndSettle();
       expect(
         Theme.of(tester.element(find.byType(AppPreferencesPage))).brightness,
-        Brightness.dark,
+        Brightness.light,
       );
       await tester.tap(find.text('Light'));
       await tester.pumpAndSettle();

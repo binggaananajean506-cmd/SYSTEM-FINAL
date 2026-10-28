@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'barili_barangays.dart';
 import 'features/verification/domain/residency_verification.dart';
 import 'firestore_converters.dart';
+import 'signup_draft.dart';
 
 enum UserRole { resident, lgu, partner, barangay }
 
@@ -128,7 +129,8 @@ VerificationStatus _verificationStatusFromMap(
 }
 
 String? _extractBirthDate(Map<String, dynamic> map) {
-  dynamic raw = map['birthDate'] ??
+  dynamic raw =
+      map['birthDate'] ??
       map['birthdate'] ??
       map['birth_date'] ??
       map['birthday'] ??
@@ -162,7 +164,9 @@ UserRole userRoleGroup(String? value) {
 }
 
 SessionDestination sessionDestinationFor(User user) {
-  if (!user.isActive || user.isRestricted) return SessionDestination.unavailable;
+  if (!user.isActive || user.isRestricted) {
+    return SessionDestination.unavailable;
+  }
   return user.role == UserRole.lgu
       ? SessionDestination.adminWeb
       : SessionDestination.home;
@@ -355,7 +359,8 @@ class User {
 
   bool get isRestricted =>
       restrictionStatus == 'active' &&
-      (restrictionEndDate == null || restrictionEndDate!.isAfter(DateTime.now()));
+      (restrictionEndDate == null ||
+          restrictionEndDate!.isAfter(DateTime.now()));
 
   /// Existing profiles predate registration OTP and remain valid. New
   /// profiles explicitly opt into this gate through [emailOtpRequired].
@@ -507,8 +512,12 @@ class User {
                 : null),
       ),
       restrictionStatus: map['restrictionStatus']?.toString(),
-      restrictionEndDate: nullableDateTimeFromFirestore(map['restrictionEndDate']),
-      restrictionReason: map['restrictionReason']?.toString() ?? map['statusReason']?.toString(),
+      restrictionEndDate: nullableDateTimeFromFirestore(
+        map['restrictionEndDate'],
+      ),
+      restrictionReason:
+          map['restrictionReason']?.toString() ??
+          map['statusReason']?.toString(),
       statusReason: map['statusReason']?.toString(),
       restrictedBy: map['restrictedBy']?.toString(),
       restrictedByName: map['restrictedByName']?.toString(),
@@ -524,6 +533,7 @@ enum LoginFailureType {
   incorrectPassword,
   network,
   general,
+
   /// The account exists and credentials are correct, but the user is under 13.
   underageAccount,
 }
@@ -638,7 +648,8 @@ class AuthService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      String? cached = (emailKey != null
+      String? cached =
+          (emailKey != null
               ? prefs.getString('user_birth_date_$emailKey')
               : null) ??
           (nameKey != null
@@ -668,8 +679,9 @@ class AuthService {
 
       if (cached != null && cached.trim().isNotEmpty) {
         final parsed = parseResidentBirthDate(cached);
-        final wire =
-            parsed != null ? storedBirthDateValue(parsed) : cached.trim();
+        final wire = parsed != null
+            ? storedBirthDateValue(parsed)
+            : cached.trim();
         cacheBirthDateInMemory(
           uid: uidKey,
           email: emailKey,
@@ -694,10 +706,15 @@ class AuthService {
       final uid = user.uid;
       final email = user.email.trim().toLowerCase();
       final name = user.name.trim().toLowerCase();
-      final fromMemory = (uid.isNotEmpty ? _birthDateMemoryCache[uid] : null) ??
+      final fromMemory =
+          (uid.isNotEmpty ? _birthDateMemoryCache[uid] : null) ??
           (email.isNotEmpty ? _birthDateMemoryCache[email] : null) ??
           (name.isNotEmpty ? _birthDateMemoryCache[name] : null) ??
-          (currentUser != null && currentUser!.uid == uid && currentUser!.birthDate != null ? currentUser!.birthDate : null) ??
+          (currentUser != null &&
+                  currentUser!.uid == uid &&
+                  currentUser!.birthDate != null
+              ? currentUser!.birthDate
+              : null) ??
           _birthDateMemoryCache['last_signup_birth_date'];
       if (fromMemory != null && fromMemory.isNotEmpty) {
         final parsed = parseResidentBirthDate(fromMemory);
@@ -792,10 +809,14 @@ class AuthService {
       );
       if (recoveredDate != null && recoveredDate.isNotEmpty) {
         finalUser = finalUser.copyWith(birthDate: recoveredDate);
-        _firestore.collection('users').doc(finalUser.uid).update({
-          'birthDate': recoveredDate,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }).catchError((_) {});
+        _firestore
+            .collection('users')
+            .doc(finalUser.uid)
+            .update({
+              'birthDate': recoveredDate,
+              'updatedAt': FieldValue.serverTimestamp(),
+            })
+            .catchError((_) {});
       }
     }
     currentUser = finalUser;
@@ -843,10 +864,14 @@ class AuthService {
             );
             if (recoveredDate != null && recoveredDate.isNotEmpty) {
               currentUser = currentUser!.copyWith(birthDate: recoveredDate);
-              _firestore.collection('users').doc(result.user!.uid).update({
-                'birthDate': recoveredDate,
-                'updatedAt': FieldValue.serverTimestamp(),
-              }).catchError((_) {});
+              _firestore
+                  .collection('users')
+                  .doc(result.user!.uid)
+                  .update({
+                    'birthDate': recoveredDate,
+                    'updatedAt': FieldValue.serverTimestamp(),
+                  })
+                  .catchError((_) {});
             }
           }
 
@@ -1001,6 +1026,32 @@ class AuthService {
     }
   }
 
+  // The pending signup and its password live only in memory. No Firebase Auth
+  // user or resident profile is created until the server accepts the OTP.
+  static Map<String, dynamic>? _pendingSignup;
+  static RegistrationOtpStatus? _pendingSignupStatus;
+  static String? get pendingSignupEmail => _pendingSignup?['email'] as String?;
+  static bool get hasPendingSignup => _pendingSignup != null;
+
+  static void cancelPendingSignup() {
+    _pendingSignup = null;
+    _pendingSignupStatus = null;
+    SignupDraftStore.clear();
+  }
+
+  static RegistrationOtpStatus _otpStatus(Map<String, dynamic> data) {
+    final expiresAtMillis = (data['expiresAtMillis'] as num?)?.toInt();
+    return RegistrationOtpStatus(
+      verified: data['verified'] == true,
+      hasActiveCode: data['hasActiveCode'] == true || data['sent'] == true,
+      retryAfterSeconds: (data['retryAfterSeconds'] as num?)?.toInt() ?? 0,
+      maskedEmail: data['maskedEmail']?.toString() ?? 'your email address',
+      expiresAt: expiresAtMillis == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(expiresAtMillis),
+    );
+  }
+
   static Future<String?> register({
     required String email,
     required String password,
@@ -1018,172 +1069,46 @@ class AuthService {
     if (role != UserRole.resident) {
       return 'Staff accounts must be created and approved by an administrator.';
     }
-    auth.User? createdUser;
-    bool createdDuringThisAttempt = false;
-    var registrationStage = 'creating the Firebase account';
+    final canonicalBarangay = canonicalBariliBarangay(barangay);
+    if (canonicalBarangay == null) return 'Select a valid Barili barangay.';
+    final parsedBirth = birthDate == null
+        ? null
+        : parseResidentBirthDate(birthDate);
+    final details = <String, dynamic>{
+      'email': email.trim().toLowerCase(),
+      'password': password,
+      'name': name,
+      'barangay': canonicalBarangay,
+      'address': address?.trim().isNotEmpty == true
+          ? address!.trim()
+          : canonicalBarangay,
+      'contactNumber': contactNumber ?? '',
+      'birthDate': parsedBirth == null
+          ? birthDate ?? ''
+          : storedBirthDateValue(parsedBirth),
+      'acceptedPolicyVersion': acceptedPolicyVersion,
+      'policyAcceptedAt': policyAcceptedAt,
+    };
     try {
-      auth.UserCredential result;
-      try {
-        debugPrint('[REGISTRATION] Starting Firebase Auth account creation.');
-        result = await _auth
-            .createUserWithEmailAndPassword(email: email, password: password)
-            .timeout(const Duration(seconds: 40));
-        createdDuringThisAttempt = true;
-        debugPrint('[REGISTRATION] Firebase Auth account created.');
-      } on auth.FirebaseAuthException catch (error) {
-        if (error.code != 'email-already-in-use') rethrow;
-
-        // A previous attempt may have created the Auth user before losing its
-        // network connection. Authenticate the same credentials and resume
-        // profile creation instead of leaving that resident permanently stuck.
-        registrationStage = 'checking the existing account';
-        debugPrint('[REGISTRATION] Email exists; checking profile recovery.');
-        result = await _auth
-            .signInWithEmailAndPassword(email: email, password: password)
-            .timeout(const Duration(seconds: 40));
-        final existingProfile = await _firestore
-            .collection('users')
-            .doc(result.user!.uid)
-            .get(const GetOptions(source: Source.server))
-            .timeout(const Duration(seconds: 12));
-        if (existingProfile.exists && existingProfile.data() != null) {
-          final existingUser = _userFromProfile(existingProfile.data()!);
-          await _auth.signOut();
-          currentUser = null;
-          return existingUser.role == UserRole.resident
-              ? 'An account already uses this email. Please sign in instead.'
-              : 'This email belongs to a staff account. Sign in from the correct portal.';
-        }
+      final result = await _functions
+          .httpsCallable('beginResidentSignup')
+          .call<Object?>({'email': details['email']})
+          .timeout(const Duration(seconds: 45));
+      final data = Map<String, dynamic>.from(result.data as Map);
+      final sessionId = data['sessionId']?.toString();
+      if (sessionId == null || sessionId.isEmpty) {
+        throw StateError('Missing signup session');
       }
-      createdUser = result.user;
-
-      if (result.user != null) {
-        final canonicalBarangay = canonicalBariliBarangay(barangay);
-        final barangayId = bariliBarangayId(canonicalBarangay);
-        if (canonicalBarangay == null || barangayId == null) {
-          throw StateError('Select a valid Barili barangay.');
-        }
-        final effectiveAddress = (address != null && address.trim().isNotEmpty)
-            ? address.trim()
-            : canonicalBarangay;
-        final parsedBirth = birthDate != null ? parseResidentBirthDate(birthDate) : null;
-        final wireDate = parsedBirth != null ? storedBirthDateValue(parsedBirth) : birthDate?.trim();
-
-        User newUser = User(
-          uid: result.user!.uid,
-          email: email,
-          name: name,
-          role: role,
-          accountStatus: AccountStatus.active,
-          verificationStatus: VerificationStatus.notVerified,
-          address: effectiveAddress,
-          contactNumber: contactNumber,
-          birthDate: wireDate,
-          acceptedPolicyVersion: acceptedPolicyVersion,
-          policyAcceptedAt: policyAcceptedAt,
-          emailOtpRequired: true,
-          emailOtpVerified: false,
-          idNumber: idNumber,
-          organizationName: organizationName,
-          barangay: canonicalBarangay,
-          barangayId: barangayId,
-          residentId: role == UserRole.resident
-              ? 'BAR-${DateTime.now().year}-${result.user!.uid.substring(0, 4).toUpperCase()}'
-              : null,
-        );
-
-        // Callable Functions automatically attach the current Firebase Auth
-        // token. Forcing a separate refresh here could stall otherwise valid
-        // registrations before the profile Function was ever contacted.
-        registrationStage = 'creating the resident profile';
-        debugPrint('[REGISTRATION] Calling createResidentProfile.');
-        await _functions
-            .httpsCallable('createResidentProfile')
-            .call<void>({
-              'name': name,
-              'barangay': canonicalBarangay,
-              'barangayId': barangayId,
-              'contactNumber': contactNumber ?? '',
-              'birthDate': wireDate ?? '',
-              'address': effectiveAddress,
-              'acceptedPolicyVersion': acceptedPolicyVersion,
-              'policyAcceptedAt': policyAcceptedAt,
-            })
-            .timeout(const Duration(seconds: 45));
-        debugPrint('[REGISTRATION] Resident profile created.');
-        currentUser = newUser;
-
-        // Persist birthDate locally and sync to Firestore directly
-        if (wireDate != null && wireDate.isNotEmpty) {
-          cacheBirthDateInMemory(
-            uid: result.user!.uid,
-            email: email,
-            name: name,
-            wireDate: wireDate,
-          );
-          try {
-            final prefs = await SharedPreferences.getInstance();
-            final emailKey = email.trim().toLowerCase();
-            final nameKey = name.trim().toLowerCase();
-            final uidKey = result.user!.uid;
-            await prefs.setString('user_birth_date_$emailKey', wireDate);
-            await prefs.setString('user_birth_date_$nameKey', wireDate);
-            await prefs.setString('user_birth_date_$uidKey', wireDate);
-            await prefs.setString('last_signup_birth_date', wireDate);
-
-            await _firestore.collection('users').doc(uidKey).update({
-              'birthDate': wireDate,
-              'updatedAt': FieldValue.serverTimestamp(),
-            }).catchError((e) {
-              debugPrint('Direct Firestore birthDate sync failed: $e');
-            });
-          } catch (storageError) {
-            debugPrint('Local birthDate persistence failed: $storageError');
-          }
-        }
-      }
-      return null; // Success
-    } on auth.FirebaseAuthException catch (e) {
-      debugPrint(
-        '[REGISTRATION] Firebase Auth failed during $registrationStage: '
-        '${e.code} - ${e.message}',
-      );
-      return _authErrorMessage(e);
-    } catch (e) {
-      if (createdUser != null) {
-        try {
-          final recovered = await _firestore
-              .collection('users')
-              .doc(createdUser.uid)
-              .get(const GetOptions(source: Source.server))
-              .timeout(const Duration(seconds: 12));
-          final recoveredData = recovered.data();
-          if (recovered.exists && recoveredData != null) {
-            currentUser = _userFromProfile(recoveredData);
-            return null;
-          }
-        } catch (recoveryError) {
-          debugPrint('Registration recovery check failed: $recoveryError');
-        }
-      }
-      if (createdDuringThisAttempt) {
-        try {
-          await createdUser?.delete().timeout(const Duration(seconds: 10));
-        } catch (cleanupError) {
-          debugPrint('Registration cleanup failed: $cleanupError');
-        }
-      }
-      currentUser = null;
-      debugPrint('[REGISTRATION] Failed during $registrationStage: $e');
-      if (e is TimeoutException) {
-        return registrationStage == 'creating the Firebase account'
-            ? 'Firebase Authentication did not respond. Try mobile data or another Wi-Fi network, then try again.'
-            : 'Registration could not finish while $registrationStage. Please try again.';
-      }
-      if (e is FirebaseFunctionsException) {
-        return e.message ?? 'Unable to create the account profile. Please try again.';
-      }
-      return 'Unable to create the account right now. Please try again.';
+      _pendingSignup = {...details, 'sessionId': sessionId};
+      _pendingSignupStatus = _otpStatus(data);
+      return null;
+    } on FirebaseFunctionsException catch (error) {
+      return error.message ??
+          'Unable to send a verification code. Please try again.';
+    } on TimeoutException {
+      return 'Sending the verification email took too long. Please try again.';
+    } catch (_) {
+      return 'Unable to start signup right now. Check your connection and try again.';
     }
   }
 
@@ -1200,6 +1125,7 @@ class AuthService {
   }
 
   static Future<RegistrationOtpStatus> getRegistrationOtpStatus() async {
+    if (_pendingSignupStatus != null) return _pendingSignupStatus!;
     final result = await _functions
         .httpsCallable('getRegistrationOtpStatus')
         .call<Object?>();
@@ -1217,6 +1143,15 @@ class AuthService {
   }
 
   static Future<RegistrationOtpStatus> requestRegistrationOtp() async {
+    final pending = _pendingSignup;
+    if (pending != null) {
+      final result = await _functions
+          .httpsCallable('beginResidentSignup')
+          .call<Object?>({'email': pending['email']});
+      final data = Map<String, dynamic>.from(result.data as Map);
+      _pendingSignup = {...pending, 'sessionId': data['sessionId']};
+      return _pendingSignupStatus = _otpStatus(data);
+    }
     try {
       final result = await _functions
           .httpsCallable('requestRegistrationOtp')
@@ -1241,9 +1176,24 @@ class AuthService {
   }
 
   static Future<void> verifyRegistrationOtp(String code) async {
+    final pending = _pendingSignup;
+    if (pending != null) {
+      await _functions.httpsCallable('completeResidentSignup').call<Object?>({
+        ...pending,
+        'code': code.trim(),
+      });
+      await _auth.signInWithEmailAndPassword(
+        email: pending['email'] as String,
+        password: pending['password'] as String,
+      );
+      await refreshCurrentUserFromServer();
+      cancelPendingSignup();
+      return;
+    }
     await _functions.httpsCallable('verifyRegistrationOtp').call<void>({
       'code': code.trim(),
     });
+    SignupDraftStore.clear();
     await _auth.currentUser?.reload();
     await _auth.currentUser?.getIdToken(true);
     await refreshCurrentUserFromServer();
@@ -1378,7 +1328,8 @@ class AuthService {
         'This account uses Google sign-in. Manage its password and email through Google.',
       );
     }
-    final supportsPassword = firebaseUser.providerData.isEmpty ||
+    final supportsPassword =
+        firebaseUser.providerData.isEmpty ||
         firebaseUser.providerData.any(
           (provider) => provider.providerId == 'password',
         );
@@ -1400,7 +1351,8 @@ class AuthService {
       'wrong-password' ||
       'invalid-credential' ||
       'invalid-login-credentials' ||
-      'ERROR_WRONG_PASSWORD' => 'Your current password is incorrect. Please check and try again.',
+      'ERROR_WRONG_PASSWORD' =>
+        'Your current password is incorrect. Please check and try again.',
       'email-already-in-use' => 'An account already uses this email address.',
       'invalid-email' => 'Enter a valid email address.',
       'weak-password' =>
@@ -1410,9 +1362,10 @@ class AuthService {
       'too-many-requests' => 'Too many attempts. Please wait and try again.',
       'network-request-failed' =>
         'Unable to connect. Check your internet connection and try again.',
-      _ => error.message?.isNotEmpty == true
-          ? error.message!
-          : 'Unable to update your password right now. Please try again.',
+      _ =>
+        error.message?.isNotEmpty == true
+            ? error.message!
+            : 'Unable to update your password right now. Please try again.',
     };
   }
 
@@ -1436,6 +1389,7 @@ class AuthService {
 
   static Future<void> logout() async {
     isLoggingOut = true;
+    cancelPendingSignup();
     currentUser = null;
     _currentUserStreamUid = null;
     _cachedCurrentUserDocStream = null;

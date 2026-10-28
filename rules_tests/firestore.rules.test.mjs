@@ -29,7 +29,7 @@ import {
 const projectId = "e-sugid";
 const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8085";
 const [host, portText] = emulatorHost.split(":");
-const rules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
+const rules = readFileSync(process.env.ESUGID_FIRESTORE_RULES || new URL("../firestore.rules", import.meta.url), "utf8");
 
 let testEnvironment;
 

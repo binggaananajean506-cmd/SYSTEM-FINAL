@@ -263,7 +263,7 @@ class ESugidApp extends StatelessWidget {
 
   const ESugidApp({
     super.key,
-    this.themeMode = ThemeMode.system,
+    this.themeMode = ThemeMode.light,
     this.initialLaunchState = const AppLaunchState(
       onboardingCompleted: false,
       permissionSetupCompleted: false,

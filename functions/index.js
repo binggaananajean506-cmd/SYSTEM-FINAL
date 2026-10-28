@@ -7,6 +7,7 @@ const { randomBytes, randomInt, createHash } = require("crypto");
 const { DELEGABLE_PERMISSIONS, accessPolicyId, policyAllows, policyScopeForVerification } = require("./access_policy");
 const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { HttpsError, onCall } = require("firebase-functions/v2/https");
+const { createResidentSignup } = require("./resident_signup");
 const { defineSecret, defineString } = require("firebase-functions/params");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const {
@@ -24,6 +25,7 @@ const {
   canonicalBarangayName,
   canonicalVerificationStatus,
   effectiveBarangayId,
+  defaultResidentVerificationPermission,
   isReviewableVerification,
   isValidResidentVerificationDocumentType,
   isValidVerificationAttentionReason,
@@ -910,8 +912,7 @@ function verificationStatusForProfile(profile) {
 
 function profileCanVerifyResidents(profile) {
   const role = canonicalRole(profile?.role);
-  return BARANGAY_ROLES.has(role)
-    && profile?.canVerifyResidents === true;
+  return defaultResidentVerificationPermission({ ...profile, role });
 }
 
 async function activeUserCaller(request) {
@@ -1040,6 +1041,14 @@ async function sendMessageToUserDevices(userIds, message) {
   }
   return { accepted, failed };
 }
+
+// New APKs verify email before creating any Auth account or resident profile.
+const residentSignup = createResidentSignup({
+  db, auth: getAuth(), secret: () => String(BREVO_API_KEY.value() || "").trim(),
+  sendEmail: sendRegistrationOtpEmail,
+});
+exports.beginResidentSignup = onCall({ region: REGION, secrets: [BREVO_API_KEY] }, residentSignup.begin);
+exports.completeResidentSignup = onCall({ region: REGION, secrets: [BREVO_API_KEY] }, residentSignup.complete);
 
 exports.createResidentProfile = onCall({ region: REGION }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Sign in is required.");
@@ -1894,6 +1903,9 @@ exports.setResidentVerificationPermission = onCall({ region: REGION }, async (re
   }
   if (actor.id === targetId && !enabled) {
     throw new HttpsError("failed-precondition", "You cannot remove your own verification permission.");
+  }
+  if (!enabled && defaultResidentVerificationPermission({ role: canonicalRole(target.role) })) {
+    throw new HttpsError("failed-precondition", "This position verifies its own barangay by default. LGU IT can manage office-wide verification access.");
   }
   const now = FieldValue.serverTimestamp();
   const batch = db.batch();

@@ -136,6 +136,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify Tab Segmented Control
+    expect(find.text('Report Center'), findsOneWidget);
+    expect(find.text('Concern Center'), findsNothing);
     expect(find.text('File a Concern'), findsWidgets);
     expect(find.textContaining('My Concerns'), findsWidgets);
 

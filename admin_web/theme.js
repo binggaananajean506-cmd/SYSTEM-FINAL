@@ -5,15 +5,16 @@
   const modes = ["light", "dark", "system"];
   const system = window.matchMedia("(prefers-color-scheme: dark)");
   const root = document.documentElement;
-  let preference = "system";
+  // Light unless the user picked a mode; the device dark setting is not followed.
+  let preference = "light";
   let transitionFrame;
 
   function readPreference() {
     try {
       const saved = localStorage.getItem(storageKey);
-      return modes.includes(saved) ? saved : "system";
+      return modes.includes(saved) ? saved : "light";
     } catch {
-      return "system";
+      return "light";
     }
   }
 
