@@ -37,9 +37,61 @@ class PublisherAvatarService {
   static void remember(String key, String url) {
     final k = normalizeKey(key);
     final trimmedUrl = url.trim();
-    if (k.isNotEmpty && trimmedUrl.isNotEmpty) {
+    if (k.isNotEmpty) {
       _cache[k] = trimmedUrl;
       getNotifier(k).value = trimmedUrl;
+    }
+  }
+
+  /// Use publisher identity, never a post's target audience, for this lookup.
+  static String? barangayProfileId({String? id, String? name}) {
+    for (final value in [id, name]) {
+      final key = (value ?? '').trim().toLowerCase().replaceFirst(
+        RegExp(r'^(?:(?:barangay|brgy|bgy|barili)[\s_:.-]+)+'),
+        '',
+      ).replaceAll(RegExp(r'[^a-z0-9]'), '');
+      for (final barangay in bariliBarangays) {
+        if (barangay.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '') == key) {
+          return bariliBarangayId(barangay);
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Null means no shared profile yet; an empty URL means the photo was removed.
+  /// Existing posts can use their saved photo until a shared profile is present.
+  static Stream<String?> watchBarangayAvatar({
+    String? barangayId,
+    String? barangay,
+    FirebaseFirestore? firestore,
+  }) async* {
+    final id = barangayProfileId(id: barangayId, name: barangay);
+    if (id == null) {
+      yield null;
+      return;
+    }
+    try {
+      final source = (firestore ?? FirebaseFirestore.instance)
+          .collection('barangay_profiles').doc(id);
+      await for (final snapshot in source.snapshots()) {
+        String? photo;
+        if (snapshot.exists) {
+          final data = snapshot.data();
+          photo = '';
+          for (final field in ['photoUrl', 'profilePhotoUrl', 'logoUrl']) {
+            final value = data?[field]?.toString().trim() ?? '';
+            if (value.isNotEmpty) {
+              photo = value;
+              break;
+            }
+          }
+          remember(id, photo ?? '');
+        }
+        yield photo;
+      }
+    } catch (error) {
+      debugPrint('Barangay publisher photo unavailable: $error');
     }
   }
 

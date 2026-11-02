@@ -1,4 +1,5 @@
 import 'package:esugid/core/widgets/app_feedback.dart';
+import 'dart:async';
 import 'package:esugid/app/theme/semantic_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -52,6 +53,8 @@ class PublicEntityProfilePage extends StatefulWidget {
 
 class _PublicEntityProfilePageState extends State<PublicEntityProfilePage> {
   String? _resolvedAvatarUrl;
+  StreamSubscription<String?>? _barangayPhotoSubscription;
+  int _avatarGeneration = 0;
 
   @override
   void initState() {
@@ -60,7 +63,25 @@ class _PublicEntityProfilePageState extends State<PublicEntityProfilePage> {
   }
 
   void _resolveAvatar() {
-    if (widget.entity.type == CivicEntityType.barangay) return;
+    final generation = ++_avatarGeneration;
+    _barangayPhotoSubscription?.cancel();
+    _barangayPhotoSubscription = null;
+    _resolvedAvatarUrl = null;
+    if (widget.entity.type == CivicEntityType.barangay) {
+      final id = PublisherAvatarService.barangayProfileId(
+        id: widget.entity.id, name: widget.entity.name,
+      );
+      _resolvedAvatarUrl = id == null ? widget.entity.logoUrl
+          : PublisherAvatarService.getCached(id) ?? widget.entity.logoUrl;
+      _barangayPhotoSubscription = PublisherAvatarService.watchBarangayAvatar(
+        barangayId: id, barangay: widget.entity.name,
+      ).listen((photo) {
+        if (mounted && generation == _avatarGeneration) {
+          setState(() => _resolvedAvatarUrl = photo ?? widget.entity.logoUrl);
+        }
+      });
+      return;
+    }
     final direct = widget.entity.logoUrl?.trim();
     if (direct != null && direct.isNotEmpty) {
       _resolvedAvatarUrl = direct;
@@ -83,12 +104,25 @@ class _PublicEntityProfilePageState extends State<PublicEntityProfilePage> {
       barangayId: bgyId,
       organizationId: orgId,
     ).then((url) {
-      if (mounted && url != null && url.isNotEmpty) {
+      if (mounted && generation == _avatarGeneration && url != null && url.isNotEmpty) {
         setState(() {
           _resolvedAvatarUrl = url;
         });
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant PublicEntityProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.entity != widget.entity) _resolveAvatar();
+  }
+
+  @override
+  void dispose() {
+    _avatarGeneration++;
+    _barangayPhotoSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _handleShareOutsideApp() async {
@@ -442,9 +476,7 @@ class _PublicEntityProfilePageState extends State<PublicEntityProfilePage> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(4.0),
-        child: entity.type == CivicEntityType.barangay
-            ? ClipOval(child: _buildLogoFallback(entity))
-            : ClipOval(
+        child: ClipOval(
           child: (_resolvedAvatarUrl != null && _resolvedAvatarUrl!.isNotEmpty)
               ? Image.network(
                   _resolvedAvatarUrl!,

@@ -21,7 +21,7 @@ import 'widgets/esugid_page_header.dart';
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const int _kMinAge = 13;
+const int _kMinAge = minimumResidentAge;
 final DateFormat _kBirthdateFormat = DateFormat('MM/dd/yyyy');
 
 /// Keeps digits only and inserts the slashes: 05141998 -> 05/14/1998.
@@ -579,7 +579,7 @@ class _SignupScreenState extends State<SignupScreen>
                               // Date of Birth + Age (Responsive with Error Effect)
                               _buildDobAgeSection(isWide),
 
-                              // ── Warning card ONLY appears when age is below 13 (NO card if 13+) ──
+                              // Show the warning only below the minimum age.
                               if (_isTooYoung) ...[
                                 const SizedBox(height: 12),
                                 _buildAgeRequirementSection(),
@@ -1296,7 +1296,7 @@ class _SignupScreenState extends State<SignupScreen>
     );
   }
 
-  // ── Minimum Age Warning Card (ONLY displayed if Age < 13) ─────────────────
+  // ── Minimum Age Warning Card ─────────────────────────────────────────────
 
   Widget _buildAgeRequirementSection() {
     return AnimatedBuilder(
@@ -1323,7 +1323,7 @@ class _SignupScreenState extends State<SignupScreen>
   }
 
   Widget _buildRequirementCardContent() {
-    // 1. Underage (< 13): Concise, impactful warning card (NO overflow)
+    // Underage residents see the minimum age requirement.
     if (_isTooYoung) {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -1402,7 +1402,7 @@ class _SignupScreenState extends State<SignupScreen>
       );
     }
 
-    // When age is valid (13+) or not yet selected: NO card is attached at all.
+    // No warning is needed for an eligible or unselected birth date.
     return const SizedBox.shrink(key: ValueKey('no-age-card'));
   }
 

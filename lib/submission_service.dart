@@ -52,6 +52,8 @@ String complaintTrackingStatusLabel(String status) => switch (status) {
   'under_review' || 'being_handled' => 'Under Review',
   'needs_information' || 'awaiting_resident' => 'Awaiting Resident Information',
   'hearing_scheduled' => 'Hearing Scheduled',
+  'awaiting_cfa' => 'Awaiting CFA Issuance',
+  'cfa_issued' => 'Closed — CFA Issued',
   'awaiting_next_schedule' || 'for_next_hearing' => 'Awaiting Next Schedule',
   'resolved' || 'settled' => 'Resolved',
   'unsettled' => 'Closed — Unsettled',
@@ -61,6 +63,16 @@ String complaintTrackingStatusLabel(String status) => switch (status) {
 
 enum ConcernListFilter { all, active, resolved }
 
+const complaintMaxHearingRounds = 6;
+const complaintRoundsPerPhase = 3;
+int complaintRoundNumber(dynamic value) => int.tryParse('$value') ?? 1;
+bool isLuponRound(dynamic value) => complaintRoundNumber(value) > complaintRoundsPerPhase;
+String complaintHearingLabel(dynamic value) {
+  final number = complaintRoundNumber(value);
+  final phaseNumber = (number - 1) % complaintRoundsPerPhase + 1;
+  return '${isLuponRound(number) ? 'Lupon' : 'Barangay'} Hearing $phaseNumber of $complaintRoundsPerPhase · Round $number of $complaintMaxHearingRounds';
+}
+
 bool concernMatchesFilter(String status, ConcernListFilter filter) {
   final normalized = normalizeSubmissionStatus(status);
   return switch (filter) {
@@ -69,11 +81,13 @@ bool concernMatchesFilter(String status, ConcernListFilter filter) {
       'resolved',
       'rejected',
       'closed',
+      'cfa_issued',
     }.contains(normalized),
     ConcernListFilter.resolved => const {
       'resolved',
       'rejected',
       'closed',
+      'cfa_issued',
     }.contains(normalized),
   };
 }
@@ -179,6 +193,10 @@ class Submission {
   final String? userId;
   final String? createdBy;
   final String? residentName;
+  final String? originalReporterName;
+  final String? originalReporterPhotoUrl;
+  final String? reporterName;
+  final List<Map<String, dynamic>> reporters;
   final String? barangay;
   final String? barangayId;
   /// Optional receiving-office identity on stored concern/case documents.
@@ -195,6 +213,9 @@ class Submission {
   final DateTime? submittedAt;
   final DateTime? updatedAt;
   final String? handlingNote;
+  final String? handledBy;
+  final String? handledByName;
+  final String? handledByRole;
   final List<Map<String, dynamic>> statusHistory;
   final List<Map<String, dynamic>> residentResponses;
 
@@ -229,6 +250,37 @@ class Submission {
       complaint.isNotEmpty ||
       id.startsWith('BC-');
 
+  String get displayReporterName {
+    final orig = originalReporterName?.trim();
+    if (orig != null && orig.isNotEmpty && orig.toLowerCase() != 'resident') {
+      return orig;
+    }
+    final rep = reporterName?.trim();
+    if (rep != null && rep.isNotEmpty && rep.toLowerCase() != 'resident') {
+      return rep;
+    }
+    final res = residentName?.trim();
+    if (res != null && res.isNotEmpty && res.toLowerCase() != 'resident') {
+      return res;
+    }
+    return 'Resident';
+  }
+
+  /// Deduplicated list of other residents who joined or reported the same concern.
+  List<String> get otherReporterNames {
+    final orig = displayReporterName.toLowerCase();
+    final list = <String>[];
+    for (final r in reporters) {
+      final name = (r['name'] ?? r['reporterName'] ?? '').toString().trim();
+      if (name.isNotEmpty &&
+          name.toLowerCase() != 'resident' &&
+          name.toLowerCase() != orig) {
+        if (!list.contains(name)) list.add(name);
+      }
+    }
+    return list;
+  }
+
   /// Completed hearing attempts count; cancelled and not-held appointments do not.
   final List<Map<String, dynamic>> hearings;
   final List<Map<String, dynamic>> externalUpdates;
@@ -248,7 +300,7 @@ class Submission {
   }
 
   bool get complaintFinished => const {
-    'resolved', 'closed', 'settled', 'unsettled', 'invalid', 'withdrawn', 'dismissed', 'rejected',
+    'resolved', 'closed', 'settled', 'unsettled', 'invalid', 'withdrawn', 'dismissed', 'rejected', 'cfa_issued',
   }.contains(status);
 
   bool get complaintNeedsConfirmation => complaintTrackingVersion == 0 &&
@@ -270,6 +322,7 @@ class Submission {
       return switch (closureOutcome ?? status) {
         'settled' || 'resolved' => 'Resolved',
         'unsettled' => 'Closed — Unsettled',
+        'cfa_issued' => 'Closed — CFA Issued',
         'invalid' => 'Invalid',
         'withdrawn' => 'Withdrawn',
         'dismissed' || 'rejected' => 'Dismissed (previous record)',
@@ -317,6 +370,10 @@ class Submission {
     this.userId,
     this.createdBy,
     this.residentName,
+    this.originalReporterName,
+    this.originalReporterPhotoUrl,
+    this.reporterName,
+    this.reporters = const [],
     this.barangay,
     this.barangayId,
     this.receivingBarangayId,
@@ -332,6 +389,9 @@ class Submission {
     this.submittedAt,
     this.updatedAt,
     this.handlingNote,
+    this.handledBy,
+    this.handledByName,
+    this.handledByRole,
     List<Map<String, dynamic>>? statusHistory,
     List<Map<String, dynamic>>? residentResponses,
     this.kind = 'concern',
@@ -375,6 +435,13 @@ class Submission {
       if (reporterIds.isNotEmpty) 'reporterIds': reporterIds,
       if (customCategory != null && customCategory!.trim().isNotEmpty)
         'customCategory': customCategory!.trim(),
+      if (originalReporterName != null && originalReporterName!.trim().isNotEmpty)
+        'originalReporterName': originalReporterName!.trim(),
+      if (originalReporterPhotoUrl != null && originalReporterPhotoUrl!.trim().isNotEmpty)
+        'originalReporterPhotoUrl': originalReporterPhotoUrl!.trim(),
+      if (reporterName != null && reporterName!.trim().isNotEmpty)
+        'reporterName': reporterName!.trim(),
+      if (reporters.isNotEmpty) 'reporters': reporters,
       'status': isComplaint ? status : normalizeSubmissionStatus(status),
       'date': Timestamp.fromDate(date),
       'type': type,
@@ -410,6 +477,9 @@ class Submission {
       'updatedAt': Timestamp.fromDate(updatedAt ?? date),
       if (handlingNote != null && handlingNote!.trim().isNotEmpty)
         'handlingNote': handlingNote!.trim(),
+      if (handledBy != null) 'handledBy': handledBy,
+      if (handledByName != null) 'handledByName': handledByName,
+      if (handledByRole != null) 'handledByRole': handledByRole,
       'statusHistory': statusHistory,
       'residentResponses': residentResponses,
       'kind': kind,
@@ -437,8 +507,11 @@ class Submission {
     final status = map['kind'] == 'complaint' || (map['id'] ?? id ?? '').toString().startsWith('BC-')
         ? rawStatus : normalizeSubmissionStatus(rawStatus);
     final date = dateTimeFromFirestore(map['date']);
+    final origReporterMap = map['originalReporter'] is Map
+        ? Map<String, dynamic>.from(map['originalReporter'] as Map)
+        : null;
     final effectiveUserId =
-        (map['userId'] ?? map['residentId'] ?? map['createdBy'])?.toString();
+        (map['userId'] ?? map['residentId'] ?? map['createdBy'] ?? origReporterMap?['id'])?.toString();
     final reporterIdsList = (map['reporterIds'] as List? ?? const [])
         .map((e) => e.toString())
         .toList();
@@ -494,6 +567,43 @@ class Submission {
       userId: effectiveUserId,
       createdBy: map['createdBy']?.toString() ?? effectiveUserId,
       residentName: map['residentName'],
+      originalReporterName: (map['originalReporterName'] ??
+              origReporterMap?['name'] ??
+              (map['originalReporter'] is! Map ? map['originalReporter'] : null) ??
+              map['reporterName'] ??
+              map['submitterName'] ??
+              (map['residentName']?.toString().toLowerCase() != 'resident'
+                  ? map['residentName']
+                  : null))
+          ?.toString()
+          .trim(),
+      originalReporterPhotoUrl: (map['originalReporterPhotoUrl'] ??
+              origReporterMap?['photoUrl'] ??
+              map['reporterPhotoUrl'] ??
+              map['profilePhotoUrl'] ??
+              map['photoUrl'])
+          ?.toString()
+          .trim(),
+      reporterName: (map['reporterName'] ??
+              map['originalReporterName'] ??
+              map['submitterName'] ??
+              map['residentName'])
+          ?.toString()
+          .trim(),
+      reporters: (map['reporters'] as List<dynamic>?)
+              ?.whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          (map['linkedReporters'] as List<dynamic>?)
+              ?.whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          (map['reporterNames'] as List<dynamic>?)
+              ?.map((item) => item.toString().trim())
+              .where((name) => name.isNotEmpty && name.toLowerCase() != 'resident')
+              .map((name) => {'name': name})
+              .toList() ??
+          const <Map<String, dynamic>>[],
       barangay: map['barangay'],
       barangayId: map['barangayId'] as String?,
       receivingBarangayId: map['receivingBarangayId']?.toString(),
@@ -509,6 +619,9 @@ class Submission {
       submittedAt: nullableDateTimeFromFirestore(map['submittedAt']) ?? date,
       updatedAt: nullableDateTimeFromFirestore(map['updatedAt']),
       handlingNote: resolvedHandlingNote,
+      handledBy: map['handledBy']?.toString(),
+      handledByName: map['handledByName']?.toString(),
+      handledByRole: map['handledByRole']?.toString(),
       statusHistory:
           (map['statusHistory'] as List<dynamic>?)
               ?.map((item) => Map<String, dynamic>.from(item as Map))
@@ -598,6 +711,9 @@ class Submission {
     String? userId,
     String? createdBy,
     String? residentName,
+    String? originalReporterName,
+    String? reporterName,
+    List<Map<String, dynamic>>? reporters,
     String? barangay,
     String? barangayId,
     String? receivingBarangayId,
@@ -613,6 +729,9 @@ class Submission {
     DateTime? submittedAt,
     DateTime? updatedAt,
     String? handlingNote,
+    String? handledBy,
+    String? handledByName,
+    String? handledByRole,
     List<Map<String, dynamic>>? statusHistory,
     List<Map<String, dynamic>>? residentResponses,
     Map<String, dynamic>? schedule,
@@ -659,6 +778,9 @@ class Submission {
       userId: userId ?? this.userId,
       createdBy: createdBy ?? this.createdBy,
       residentName: residentName ?? this.residentName,
+      originalReporterName: originalReporterName ?? this.originalReporterName,
+      reporterName: reporterName ?? this.reporterName,
+      reporters: reporters ?? this.reporters,
       barangay: barangay ?? this.barangay,
       barangayId: barangayId ?? this.barangayId,
       receivingBarangayId: receivingBarangayId ?? this.receivingBarangayId,
@@ -674,6 +796,9 @@ class Submission {
       submittedAt: submittedAt ?? this.submittedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       handlingNote: handlingNote ?? this.handlingNote,
+      handledBy: handledBy ?? this.handledBy,
+      handledByName: handledByName ?? this.handledByName,
+      handledByRole: handledByRole ?? this.handledByRole,
       statusHistory: statusHistory ?? this.statusHistory,
       residentResponses: residentResponses ?? this.residentResponses,
     );
@@ -1195,5 +1320,319 @@ class SubmissionService {
       }
       await batch.commit();
     }
+  }
+
+  static String formatRelativeTime(DateTime? date, {String? defaultTimeAgo}) {
+    if (defaultTimeAgo != null && defaultTimeAgo.trim().isNotEmpty) {
+      return defaultTimeAgo.trim();
+    }
+    if (date == null) return '';
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    if (diff.isNegative || diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return '1 day ago';
+    if (diff.inDays < 30) return '${diff.inDays} days ago';
+    if (diff.inDays < 365) {
+      final months = (diff.inDays / 30).floor();
+      return '$months ${months == 1 ? "month" : "months"} ago';
+    }
+    final years = (diff.inDays / 365).floor();
+    return '$years ${years == 1 ? "year" : "years"} ago';
+  }
+
+  static final Map<String, Map<String, String>> _userProfileCache = {};
+
+  /// Retrieves a cached user profile ({'name': ..., 'photoUrl': ...}) if available in memory.
+  static Map<String, String>? getCachedUserProfile(String uid) {
+    final clean = uid.trim();
+    return _userProfileCache[clean];
+  }
+
+  /// Resolves the actual user profile (name and profile photo) from Firestore.
+  static Future<Map<String, String>> resolveUserProfile(String uid) async {
+    final cleanUid = uid.trim();
+    if (cleanUid.isEmpty) return const {'name': '', 'photoUrl': ''};
+    final cached = _userProfileCache[cleanUid];
+    if (cached != null && (cached['name']?.isNotEmpty == true || cached['photoUrl']?.isNotEmpty == true)) {
+      return cached;
+    }
+    try {
+      final doc = await _firestore.collection('users').doc(cleanUid).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final name = (data['name'] ?? data['displayName'] ?? data['fullName'] ?? '').toString().trim();
+        final photo = (data['profilePhotoUrl'] ?? data['photoUrl'] ?? data['avatarUrl'] ?? '').toString().trim();
+        final profile = {'name': name, 'photoUrl': photo};
+        _userProfileCache[cleanUid] = profile;
+        return profile;
+      }
+    } catch (_) {}
+    return const {'name': '', 'photoUrl': ''};
+  }
+
+  /// Fetches sanitized public concern reporters in batch for multiple concerns.
+  static Future<Map<String, Map<String, dynamic>>> getPublicConcernReportersBatch(
+    List<String> concernIds,
+  ) async {
+    final cleanIds = concernIds.where((id) => id.trim().isNotEmpty).toList();
+    if (cleanIds.isEmpty) return const {};
+    try {
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'asia-southeast1',
+      ).httpsCallable('getPublicConcernReporters');
+      final result = await callable.call<Map<String, dynamic>>({
+        'concernIds': cleanIds,
+      });
+      final raw = result.data['results'];
+      if (raw is Map) {
+        final Map<String, Map<String, dynamic>> mapped = {};
+        for (final entry in raw.entries) {
+          final val = Map<String, dynamic>.from(entry.value as Map);
+          if (!val.containsKey('joinedReporters') && val.containsKey('reporters')) {
+            val['joinedReporters'] = val['reporters'];
+          }
+          if (!val.containsKey('totalCount') && val.containsKey('count')) {
+            val['totalCount'] = val['count'];
+          }
+          // Cache user profile for original reporter if available
+          final orig = val['originalReporter'];
+          if (orig is Map) {
+            final uid = (orig['id'] ?? '').toString().trim();
+            final name = (orig['name'] ?? '').toString().trim();
+            final photo = (orig['photoUrl'] ?? '').toString().trim();
+            if (uid.isNotEmpty && name.isNotEmpty && name.toLowerCase() != 'resident') {
+              _userProfileCache[uid] = {'name': name, 'photoUrl': photo};
+            }
+          }
+          mapped[entry.key.toString()] = val;
+        }
+        return mapped;
+      }
+    } catch (_) {}
+    return const {};
+  }
+
+  /// Fetches the sanitized public concern reporters list.
+  /// Deduplicates entries and excludes private details (no contact, email, address, evidence).
+  static Future<Map<String, dynamic>> getPublicConcernReporters(
+    String concernId, {
+    Submission? fallbackSubmission,
+  }) async {
+    Map<String, dynamic>? result;
+
+    // 1. Try Firebase Cloud Functions callable 'getPublicConcernReporters'
+    try {
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'asia-southeast1',
+      ).httpsCallable('getPublicConcernReporters');
+      final res = await callable.call<Map<String, dynamic>>({
+        'concernId': concernId,
+      });
+      final data = res.data;
+      if (data.isNotEmpty) {
+        result = Map<String, dynamic>.from(data);
+      }
+    } catch (_) {}
+
+    // 2. Try direct Firestore read on submissions/{concernId}/reports
+    if (result == null) {
+      try {
+        final reportsSnap = await _firestore
+            .collection('submissions')
+            .doc(concernId)
+            .collection('reports')
+            .get();
+        if (reportsSnap.docs.isNotEmpty) {
+          final List<Map<String, dynamic>> joined = [];
+          final Set<String> seenIds = {};
+          if (fallbackSubmission?.userId != null &&
+              fallbackSubmission!.userId!.isNotEmpty) {
+            seenIds.add(fallbackSubmission.userId!);
+          }
+          for (final doc in reportsSnap.docs) {
+            final data = doc.data();
+            final id = (data['reporterId'] ?? doc.id).toString().trim();
+            if (id.isNotEmpty && seenIds.contains(id)) continue;
+            if (id.isNotEmpty) seenIds.add(id);
+            joined.add({
+              'id': id,
+              'name': (data['reporterName'] ?? 'Resident').toString().trim(),
+              'photoUrl': (data['reporterPhotoUrl'] ?? data['profilePhotoUrl'] ?? data['photoUrl'] ?? '').toString().trim(),
+              'isOriginal': false,
+            });
+          }
+          result = {
+            'concernId': concernId,
+            'originalReporter': {
+              'id': fallbackSubmission?.userId ?? '',
+              'name': fallbackSubmission?.displayReporterName ?? 'Resident',
+              'photoUrl': fallbackSubmission?.originalReporterPhotoUrl ?? '',
+              'isOriginal': true,
+            },
+            'reporters': joined,
+            'joinedReporters': joined,
+            'count': 1 + joined.length,
+            'totalCount': 1 + joined.length,
+          };
+        }
+      } catch (_) {}
+    }
+
+    // 3. Try reading public_concern_summaries doc
+    if (result == null) {
+      try {
+        final doc = await _firestore
+            .collection('public_concern_summaries')
+            .doc(concernId)
+            .get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          final origName = (data['originalReporterName'] ??
+                  data['reporterName'] ??
+                  data['submitterName'] ??
+                  fallbackSubmission?.displayReporterName ??
+                  'Resident')
+              .toString()
+              .trim();
+          final origPhoto = (data['originalReporterPhotoUrl'] ??
+                  data['reporterPhotoUrl'] ??
+                  fallbackSubmission?.originalReporterPhotoUrl ??
+                  '')
+              .toString()
+              .trim();
+          final origId = (data['userId'] ?? fallbackSubmission?.userId ?? '').toString().trim();
+
+          final rawReporters = data['reporters'];
+          final List<Map<String, dynamic>> list = (rawReporters is List)
+              ? rawReporters.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList()
+              : <Map<String, dynamic>>[];
+
+          final orig = list.firstWhere(
+            (r) => r['isOriginal'] == true,
+            orElse: () => {
+              'id': origId,
+              'name': origName,
+              'photoUrl': origPhoto,
+              'isOriginal': true,
+            },
+          );
+          if ((orig['photoUrl'] == null || orig['photoUrl'].toString().isEmpty) && origPhoto.isNotEmpty) {
+            orig['photoUrl'] = origPhoto;
+          }
+          final joined = list.where((r) => r['isOriginal'] != true).toList();
+          final total = (data['reporterCount'] as num?)?.toInt() ?? (1 + joined.length);
+          result = {
+            'concernId': concernId,
+            'originalReporter': orig,
+            'reporters': joined,
+            'joinedReporters': joined,
+            'count': total,
+            'totalCount': total,
+          };
+        }
+      } catch (_) {}
+    }
+
+    // 4. In-memory fallback from fallbackSubmission
+    if (result == null) {
+      final origName = fallbackSubmission?.displayReporterName ?? 'Resident';
+      final origPhoto = fallbackSubmission?.originalReporterPhotoUrl ?? '';
+      final joined = fallbackSubmission?.reporters
+              .where((r) => r['isOriginal'] != true)
+              .toList() ??
+          const <Map<String, dynamic>>[];
+      final total = fallbackSubmission != null && fallbackSubmission.reporterCount > 1
+          ? fallbackSubmission.reporterCount
+          : (1 + joined.length);
+      result = {
+        'concernId': concernId,
+        'originalReporter': {
+          'id': fallbackSubmission?.userId ?? '',
+          'name': origName,
+          'photoUrl': origPhoto,
+          'isOriginal': true,
+        },
+        'reporters': joined,
+        'joinedReporters': joined,
+        'count': total,
+        'totalCount': total,
+      };
+    }
+
+    // Ensure profile resolution and deduplication
+    final origMap = result['originalReporter'] is Map
+        ? Map<String, dynamic>.from(result['originalReporter'] as Map)
+        : <String, dynamic>{'name': 'Resident', 'isOriginal': true};
+    final origId = (origMap['id'] ?? fallbackSubmission?.userId ?? '').toString().trim();
+    var origName = (origMap['name'] ?? '').toString().trim();
+    var origPhoto = (origMap['photoUrl'] ?? '').toString().trim();
+
+    if (origId.isNotEmpty && (origName.isEmpty || origName.toLowerCase() == 'resident' || origPhoto.isEmpty)) {
+      final userProfile = await resolveUserProfile(origId);
+      if (userProfile['name']?.isNotEmpty == true && (origName.isEmpty || origName.toLowerCase() == 'resident')) {
+        origName = userProfile['name']!;
+        origMap['name'] = origName;
+      }
+      if (userProfile['photoUrl']?.isNotEmpty == true && origPhoto.isEmpty) {
+        origPhoto = userProfile['photoUrl']!;
+        origMap['photoUrl'] = origPhoto;
+      }
+    }
+    result['originalReporter'] = origMap;
+
+    final rawJoined = (result['reporters'] as List<dynamic>?)
+            ?.whereType<Map>()
+            .map((m) => Map<String, dynamic>.from(m))
+            .toList() ??
+        (result['joinedReporters'] as List<dynamic>?)
+            ?.whereType<Map>()
+            .map((m) => Map<String, dynamic>.from(m))
+            .toList() ??
+        <Map<String, dynamic>>[];
+
+    final seenIds = <String>{};
+    final seenNames = <String>{};
+    if (origId.isNotEmpty) seenIds.add(origId);
+    if (origName.isNotEmpty && origName.toLowerCase() != 'resident') {
+      seenNames.add(origName.toLowerCase());
+    }
+
+    final dedupedJoined = <Map<String, dynamic>>[];
+    for (final item in rawJoined) {
+      final id = (item['id'] ?? item['reporterId'] ?? '').toString().trim();
+      var name = (item['name'] ?? item['reporterName'] ?? '').toString().trim();
+      var photo = (item['photoUrl'] ?? item['profilePhotoUrl'] ?? '').toString().trim();
+
+      if (id.isNotEmpty && (name.isEmpty || name.toLowerCase() == 'resident' || photo.isEmpty)) {
+        final userProfile = await resolveUserProfile(id);
+        if (userProfile['name']?.isNotEmpty == true && (name.isEmpty || name.toLowerCase() == 'resident')) {
+          name = userProfile['name']!;
+        }
+        if (userProfile['photoUrl']?.isNotEmpty == true && photo.isEmpty) {
+          photo = userProfile['photoUrl']!;
+        }
+      }
+
+      if (id.isNotEmpty && seenIds.contains(id)) continue;
+      if (name.isNotEmpty && name.toLowerCase() != 'resident' && seenNames.contains(name.toLowerCase())) continue;
+      if (id.isNotEmpty) seenIds.add(id);
+      if (name.isNotEmpty && name.toLowerCase() != 'resident') seenNames.add(name.toLowerCase());
+
+      dedupedJoined.add({
+        'id': id,
+        'name': name.isNotEmpty ? name : 'Resident',
+        'photoUrl': photo,
+        'isOriginal': false,
+      });
+    }
+
+    result['reporters'] = dedupedJoined;
+    result['joinedReporters'] = dedupedJoined;
+    result['count'] = 1 + dedupedJoined.length;
+    result['totalCount'] = 1 + dedupedJoined.length;
+
+    return result;
   }
 }

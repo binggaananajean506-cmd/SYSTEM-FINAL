@@ -55,7 +55,7 @@ function fixture() {
   const email = "signup@example.com";
   return { records, emails, accounts,
     advance: (ms) => { clock += ms; }, fail: (stage) => { failure = stage; },
-    begin: (value = email) => service.begin(request({ email: value })),
+    begin: (value = email, name) => service.begin(request({ email: value, name })),
     complete: (session, overrides = {}) => service.complete(request({
       email, sessionId: session.sessionId, code: emails.at(-1)?.code,
       password: "Dummy-password-123!", name: "Ana Resident", barangay: "Poblacion",
@@ -73,6 +73,46 @@ test("requesting a code records no account, profile, password or form details", 
   assert.deepEqual(users(f), []);
   const stored = JSON.stringify([...f.records.values()]);
   for (const key of ["password", "name", "birthDate", "barangay", "Dummy-password"]) assert.ok(!stored.includes(key));
+});
+
+test("verification emails greet the supplied resident name without storing it", async () => {
+  const f = fixture();
+  await f.begin(undefined, "  Ana   Dela Cruz  ");
+  assert.equal(f.emails[0].name, "Ana Dela Cruz");
+  f.advance(61000);
+  await f.begin(undefined, "Ana Dela Cruz");
+  assert.equal(f.emails[1].name, "Ana Dela Cruz");
+  assert.ok(!JSON.stringify([...f.records.values()]).includes("Ana"));
+  assert.equal(f.accounts.size, 0);
+  assert.deepEqual(users(f), []);
+});
+
+test("older apps may request an OTP without a name; oversized names are rejected", async () => {
+  const f = fixture();
+  await f.begin();
+  assert.equal(f.emails[0].name, "Resident");
+  f.advance(61000);
+  await assert.rejects(f.begin(undefined, "a".repeat(121)), { code: "invalid-argument" });
+  assert.equal(f.emails.length, 1);
+});
+
+test("a resident can register on their 15th birthday but not the day before", async () => {
+  const tooYoung = fixture();
+  const session = await tooYoung.begin();
+  await assert.rejects(tooYoung.complete(session, { birthDate: "2011-10-27" }),
+    { code: "invalid-argument", message: "You must be at least 15 to register." });
+  assert.equal(tooYoung.accounts.size, 0);
+  assert.deepEqual(users(tooYoung), []);
+  const eligible = fixture();
+  const result = await eligible.complete(await eligible.begin(), { birthDate: "2011-10-26" });
+  assert.equal(result.verified, true);
+});
+
+test("the age boundary follows the Philippine calendar after local midnight", async () => {
+  const f = fixture();
+  f.advance(11 * 60 * 60 * 1000); // 2026-10-27 00:00 in the Philippines.
+  const result = await f.complete(await f.begin(), { birthDate: "2011-10-27" });
+  assert.equal(result.verified, true);
 });
 
 test("a correct OTP creates the verified account and resident profile together", async () => {

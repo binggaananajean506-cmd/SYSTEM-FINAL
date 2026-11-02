@@ -21,7 +21,7 @@ function emailValue(value) {
   return email;
 }
 
-function signupDetails(data) {
+function signupDetails(data, time) {
   const name = String(data?.name || "").trim();
   const password = String(data?.password || "");
   const barangay = canonicalBarangayName(data?.barangay);
@@ -37,13 +37,15 @@ function signupDetails(data) {
     throw new HttpsError("invalid-argument", "Password must be 8-128 characters.");
   }
   const date = new Date(`${birthDate}T00:00:00Z`);
+  const today = new Date(time + 8 * 60 * 60 * 1000);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || !Number.isFinite(date.getTime())
-    || date.toISOString().slice(0, 10) !== birthDate || date > new Date()) {
+    || date.toISOString().slice(0, 10) !== birthDate || date > today) {
     throw new HttpsError("invalid-argument", "Enter a valid birth date.");
   }
-  const minimumAgeDate = new Date();
-  minimumAgeDate.setUTCFullYear(minimumAgeDate.getUTCFullYear() - 13);
-  if (date > minimumAgeDate) throw new HttpsError("invalid-argument", "You must be at least 13 to register.");
+  const birthdayPending = today.getUTCMonth() < date.getUTCMonth()
+    || (today.getUTCMonth() === date.getUTCMonth() && today.getUTCDate() < date.getUTCDate());
+  const age = today.getUTCFullYear() - date.getUTCFullYear() - (birthdayPending ? 1 : 0);
+  if (age < 15) throw new HttpsError("invalid-argument", "You must be at least 15 to register.");
   return { password, profile: {
     name, barangay, barangayId: barangayIdFor(barangay), birthDate,
     address: String(data?.address || barangay).trim().slice(0, 200),
@@ -91,6 +93,8 @@ function createResidentSignup({ db, auth, secret, sendEmail, now = Date.now }) {
 
   async function begin(request) {
     const email = emailValue(request.data?.email);
+    const name = String(request.data?.name || "").replace(/\s+/g, " ").trim();
+    if (name.length > 120) throw new HttpsError("invalid-argument", "Your name must be 120 characters or fewer.");
     const apiKey = secret();
     if (!apiKey) throw new HttpsError("failed-precondition", "Email delivery is not configured.");
     await checkAvailable(email);
@@ -128,7 +132,7 @@ function createResidentSignup({ db, auth, secret, sendEmail, now = Date.now }) {
         deleteAfter: Timestamp.fromMillis(time + OTP_REQUEST_WINDOW_MS * 2) });
     });
     try {
-      await sendEmail({ recipientEmail: email, name: "Resident", code });
+      await sendEmail({ recipientEmail: email, name: name || "Resident", code });
     } catch (_) {
       // Preserve the rate counters even if the delivery service fails.
       await db.runTransaction(async (tx) => {
@@ -151,10 +155,10 @@ function createResidentSignup({ db, auth, secret, sendEmail, now = Date.now }) {
     if (!/^[a-f0-9]{64}$/.test(sessionId) || !code) {
       throw new HttpsError("invalid-argument", "Enter the complete 6-digit code.");
     }
-    const { password, profile } = signupDetails(request.data);
+    const time = now();
+    const { password, profile } = signupDetails(request.data, time);
     const apiKey = secret();
     if (!apiKey) throw new HttpsError("failed-precondition", "Email verification is not configured.");
-    const time = now();
     const reference = challengeRef(email);
     const leaseId = randomBytes(16).toString("hex");
     const result = await db.runTransaction(async (tx) => {

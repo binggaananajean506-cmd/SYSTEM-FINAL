@@ -36,6 +36,13 @@ before(async () => {
     "tracking-resident": { role: "resident", barangay: "Vito", barangayId, verificationStatus: "verified" },
     "tracking-pending": { role: "barangay_secretary", barangay: "Vito", barangayId, accountStatus: "pending_approval" },
     "tracking-mayor": { role: "mayor" },
+    "tracking-secretary": { role: "barangay_secretary", barangay: "Vito", barangayId },
+    "tracking-it": { role: "super_admin", departmentId: "it-department" },
+    "tracking-neighbor": { role: "resident", barangay: "Vito", barangayId,
+      verifiedBarangayId: barangayId, verificationStatus: "verified" },
+    "tracking-other-resident": { role: "resident", barangay: "Poblacion", barangayId: barangayIdFor("Poblacion"),
+      verificationStatus: "verified" },
+    "tracking-unverified-resident": { role: "resident", barangay: "Vito", barangayId, verificationStatus: "not_submitted" },
   };
   for (const [uid, fields] of Object.entries(profiles)) await db.collection("users").doc(uid).set({
     name: uid, status: "approved", accountStatus: "active", ...fields,
@@ -129,4 +136,66 @@ test("summons and confirmed tanod handoff notify the resident once and preserve 
   assert.equal(handoff.userId, "tracking-resident");
   assert.match(handoff.message, /Pedro Reyes.*for delivery to the respondent/);
   assert.equal(handoff.navigation.id, id);
+});
+
+test("summons loads the receiving office captain and secretary and leaves tanod blank", async () => {
+  const id = await seed({ receivingBarangayId: barangayId, barangayId: barangayIdFor("Poblacion"),
+    barangay: "Poblacion", status: "hearing_scheduled", hearings: [{ id: "office-hearing", number: 1,
+      status: "scheduled", date: "2026-11-01", time: "09:00", venue: "Vito Barangay Hall" }] });
+  const expected = { barangayId, barangay: "Vito", captainName: "tracking-official", secretaryName: "tracking-secretary" };
+  // Official names are intentionally separate from their account identifiers.
+  await db.collection("users").doc("tracking-official").update({ name: "Vito Captain" });
+  await db.collection("users").doc("tracking-secretary").update({ name: "Vito Secretary" });
+  expected.captainName = "Vito Captain"; expected.secretaryName = "Vito Secretary";
+  assert.deepEqual(await callables.getSummonsOfficials.run(actor("tracking-resident", { submissionId: id })), expected);
+  assert.deepEqual(await callables.getSummonsOfficials.run(actor("tracking-it", { submissionId: id })), expected);
+  await assert.rejects(callables.getSummonsOfficials.run(actor("tracking-other", { submissionId: id })), { code: "permission-denied" });
+  const issued = await advance(id, { action: "issue_summons", respondentName: "Juan Dela Cruz",
+    respondentAddress: "Vito", appearanceDate: "2026-11-01", appearanceTime: "09:00",
+    appearanceVenue: "Vito Barangay Hall", hearingPurpose: "Boundary dispute mediation", assignedTanod: "" });
+  assert.deepEqual(issued.update.summons.officials, expected);
+  assert.equal(issued.update.summons.assignedTanod, "");
+  assert.equal(issued.update.summons.barangay, "Vito");
+});
+
+test("callable requires all six rounds before CFA, preserves retries and derives lupon summons stage", async () => {
+  const id = await seed({ status: "awaiting_next_schedule", legacyCompletedHearings: 3 });
+  await assert.rejects(advance(id, { action: "issue_cfa", reason: "No settlement", confirmEligibility: true }), /6 rounds/);
+  const scheduled = await advance(id, { action: "schedule_another_hearing", date: "2099-11-01", time: "09:00", venue: "Vito Barangay Hall" });
+  assert.equal(scheduled.update.schedule.number, 4);
+  assert.equal(scheduled.update.schedule.phase, "lupon");
+  const issued = await advance(id, { action: "issue_summons", expectedVersion: 1, respondentName: "Juan Dela Cruz",
+    respondentAddress: "Vito", appearanceDate: "2099-11-01", appearanceTime: "09:00", appearanceVenue: "Vito Barangay Hall",
+    hearingPurpose: "Lupon conciliation", summonsCount: 1 });
+  assert.equal(issued.update.summons.summonsCount, 4);
+  assert.equal(issued.update.summons.phaseNumber, 1);
+  await assert.rejects(advance(id, { action: "issue_cfa", expectedVersion: 2, reason: "Still scheduled", confirmEligibility: true }), /6 rounds/);
+  const ready = await seed({ status: "awaiting_cfa", legacyCompletedHearings: 6 });
+  await assert.rejects(advance(ready, { action: "issue_cfa", reason: "No agreement after six rounds." }), /Confirm/);
+  const input = { action: "issue_cfa", operationId: randomUUID(), cfaForm: "20-A", confirmOfficeRecords: true, reason: "No agreement after six rounds.", confirmEligibility: true };
+  const cfa = await advance(ready, input);
+  assert.equal(cfa.update.closureOutcome, "cfa_issued");
+  assert.deepEqual(await advance(ready, input), cfa);
+  assert.equal((await db.collection("notifications").where("referenceId", "==", ready).get()).size, 1);
+  await assert.rejects(advance(ready, { action: "schedule_hearing", expectedVersion: 1 }), /finished/);
+});
+
+test("handler lookup returns only the actual official's name and role to authorized viewers", async () => {
+  await db.collection("users").doc("tracking-official").update({ name: "Vito Captain" });
+  const id = await seed({ kind: "concern", status: "being_handled", handledBy: "tracking-official",
+    visibility: "private", statusHistory: [{ action: "handle", actorId: "tracking-official" }] });
+  const result = await callables.getConcernHandler.run(actor("tracking-resident", { submissionId: id }));
+  assert.deepEqual(result, { name: "Vito Captain", role: "barangay_captain" });
+  await assert.rejects(callables.getConcernHandler.run(actor("tracking-other", { submissionId: id })), { code: "permission-denied" });
+  await assert.rejects(callables.getConcernHandler.run(actor("tracking-pending", { submissionId: id })), { code: "permission-denied" });
+  const missing = await seed({ kind: "concern", handledBy: "unknown-official" });
+  assert.deepEqual(await callables.getConcernHandler.run(actor("tracking-resident", { submissionId: missing })), { name: "", role: "" });
+  const publicId = await seed({ kind: "concern", visibility: "public", handledBy: "tracking-official" });
+  assert.deepEqual(await callables.getConcernHandler.run(actor("tracking-neighbor", { submissionId: publicId })), result);
+  for (const uid of ["tracking-other-resident", "tracking-unverified-resident"]) {
+    await assert.rejects(callables.getConcernHandler.run(actor(uid, { submissionId: publicId })), { code: "permission-denied" });
+  }
+  await assert.rejects(callables.getConcernHandler.run(actor("tracking-neighbor", { submissionId: id })), { code: "permission-denied" });
+  const complaintId = await seed({ visibility: "public", handledBy: "tracking-official" });
+  await assert.rejects(callables.getConcernHandler.run(actor("tracking-neighbor", { submissionId: complaintId })), { code: "permission-denied" });
 });

@@ -332,7 +332,7 @@ void main() {
   );
 
   testWidgets(
-    'barangay publisher does not display an uploaded seal as an avatar',
+    'barangay publisher displays its uploaded profile photo',
     (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
@@ -346,8 +346,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(BarangayLogo), findsNothing);
-      expect(find.byType(Image), findsNothing);
-      expect(find.byIcon(Icons.account_balance_rounded), findsOneWidget);
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.byIcon(Icons.account_balance_rounded), findsNothing);
       expect(find.byIcon(Icons.verified_rounded), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -372,6 +372,24 @@ void main() {
     expect(tester.widget<Image>(find.byType(Image)).image, isA<MemoryImage>());
     expect(find.byType(BarangayLogo), findsNothing);
     expect(find.byIcon(Icons.account_balance_rounded), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('barangay avatar follows profile changes and clears removed photos', (tester) async {
+    const photo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
+    PublisherAvatarService.remember('barili_vito', photo);
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: PublisherAvatar(
+      barangayId: 'barili_vito', photoUrl: 'assets/images/barangays/vito.png',
+    ))));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Image>(find.byType(Image)).image, isA<MemoryImage>());
+    PublisherAvatarService.remember('barili_vito', 'assets/images/barangays/pangpang.png');
+    await tester.pumpAndSettle();
+    expect(tester.widget<Image>(find.byType(Image)).image, isA<AssetImage>());
+    PublisherAvatarService.remember('barili_vito', '');
+    await tester.pumpAndSettle();
+    expect(find.byType(Image), findsNothing);
+    expect(find.byIcon(Icons.account_balance_rounded), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -474,6 +492,20 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('barangay profile page uses the shared web profile photo', (tester) async {
+    const photo = 'https://example.test/vito-profile.jpg';
+    PublisherAvatarService.remember('barili_vito', photo);
+    await tester.pumpWidget(MaterialApp(home: PublicEntityProfilePage(
+      entity: PublicCivicEntity.forBarangay('Vito'),
+    )));
+    await tester.pumpAndSettle();
+    final image = tester.widget<Image>(find.byType(Image));
+    expect(image.image, isA<NetworkImage>());
+    expect((image.image as NetworkImage).url, photo);
+    expect(tester.takeException(), isNull);
+    PublisherAvatarService.remember('barili_vito', '');
+  });
 
   for (final width in [320.0, 600.0]) {
     testWidgets('summons uses stored case ID and both seals at width $width', (

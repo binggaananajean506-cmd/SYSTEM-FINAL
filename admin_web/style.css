@@ -29583,7 +29583,7 @@ button[aria-label^="Close" i] .material-symbols-rounded {
   border-radius: 8px !important;
   font-weight: 700 !important;
   padding: 8px 16px !important;
-  display: inline-flex !important;
+  display: inline-flex;
   align-items: center !important;
   gap: 6px !important;
   font-size: 13.5px !important;
@@ -29610,7 +29610,7 @@ button[aria-label^="Close" i] .material-symbols-rounded {
   border-radius: 8px !important;
   font-weight: 700 !important;
   padding: 8px 16px !important;
-  display: inline-flex !important;
+  display: inline-flex;
   align-items: center !important;
   gap: 6px !important;
   font-size: 13.5px !important;
@@ -29860,8 +29860,19 @@ button[aria-label^="Close" i] .material-symbols-rounded {
   object-fit: contain;
 }
 
-.kp-header-seal--municipal { left: 0; }
-.kp-header-seal--barangay { right: 0; }
+.kp-header-seal--municipal { right: 0; }
+.kp-header-seal--barangay { left: 0; }
+
+.kp-signatories-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 32px;
+  margin-top: 42px;
+  break-inside: avoid;
+}
+.kp-signatory { text-align: center; font-size: 13px; line-height: 1.5; }
+.kp-signatory-name { margin-top: 26px; font-weight: 700; text-decoration: underline; overflow-wrap: anywhere; }
+.kp-signatory--tanod { width: 55%; margin: 34px auto 0; break-inside: avoid; }
 
 .kp-gov-line {
   font-size: 13px;
@@ -35880,4 +35891,16 @@ body:has(#login-screen:not([hidden])) {
 
 .auth-landing-link .material-symbols-rounded {
   font-size: 18px;
+}
+
+button[data-busy="true"] { cursor: progress; }
+button[data-busy="true"]::before {
+  content: ""; display: inline-block; width: 13px; height: 13px;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; margin-right: 8px; vertical-align: -2px;
+  animation: action-saving-spin .8s linear infinite;
+}
+@keyframes action-saving-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  button[data-busy="true"]::before { animation: none; }
 }

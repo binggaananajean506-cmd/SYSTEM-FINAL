@@ -14,7 +14,7 @@ You **MUST ALWAYS** automatically execute the full 3-step build and deployment p
    ```powershell
    node scripts/prepare-deploy.mjs
    ```
-   (This stages `admin_web/` at `/admin/` in `deploy_web/`. The public landing page is hosted elsewhere; `/` redirects to `/admin`.)
+   (This stages `landing_web/` at `/`, `admin_web/` at `/admin/`, and the current signed `output/app-release.apk` at `/downloads/app-release.apk` in `deploy_web/`. The user requested the public landing page as the front page.)
 
 3. **Deploy to Firebase Hosting**:
    ```powershell
@@ -22,8 +22,9 @@ You **MUST ALWAYS** automatically execute the full 3-step build and deployment p
    ```
 
 4. **Verify Deployment**:
-   - Check that `https://e-sugid.web.app/` redirects to `/admin`.
+   - Check that `https://e-sugid.web.app/` serves the public landing page with HTTP 200.
    - Check that `https://e-sugid.web.app/admin` (Admin Console) is live and returns HTTP 200.
+   - Check that `/downloads/app-release.apk` serves the current release and matches `release.json`.
    - Report the status to the user.
 
 Do not wait for the user to ask you to deploy. Deploy it immediately on every edit.

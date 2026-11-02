@@ -16,6 +16,9 @@ const samples = [
     residentName: "Carlo Reyes", type: "Noise", date: "2026-10-05T01:00:00Z", status: "closed", closureOutcome: "unsettled", resolutionSummary: "No agreement was reached.", hearings: [] },
 ];
 async function openPage(page, records = samples) {
+  await page.route('**/getSummonsOfficials', route => route.fulfill({ contentType: 'application/json',
+    body: JSON.stringify({ result: { barangayId: 'barili_vito', barangay: 'Vito',
+      captainName: 'Vito Captain', secretaryName: 'Vito Secretary' } }) }));
   await page.clock.setFixedTime(new Date("2026-10-10T04:00:00Z"));
   await loadAdminSession(page, "barangay_captain");
   await page.evaluate(records => { window.__adminSession.state.complaints = records; }, records);
@@ -27,21 +30,23 @@ const row = (page, id) => page.locator('.complaint-reports-table tbody tr').filt
 test("table prioritizes action, separates pending and finished, and searches parties", async ({ page }) => {
   await openPage(page);
   await expect(page.locator('.complaint-reports-table thead th')).toHaveCount(6);
-  await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(3);
-  await expect(row(page, "100001")).toContainText("View");
+  await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(1);
+  await tab(page, "new").click();
+  await expect(row(page, "100001")).toContainText("Open case");
   await tab(page, "scheduled").click();
   await expect(row(page, "100002")).toContainText("Hearing 1 of 3");
-  await tab(page, "result_pending").click();
-  await expect(row(page, "100003")).toContainText("View");
+  await tab(page, "active").click();
+  await expect(row(page, "100003")).toContainText("Open case");
   await tab(page, "finished").click();
   await expect(row(page, "100004")).toContainText("Closed — Unsettled");
   await tab(page, "active").click();
   await expect(tab(page, "active")).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(3);
+  await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(1);
+  await tab(page, "new").click();
   await page.locator('#complaintSearch').fill("Maria");
   await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(1);
   await page.locator('#complaintSearchClear').click();
-  await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(3);
+  await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(1);
 });
 test("future schedules can be edited but same-day schedules are locked before start", async ({ page }) => {
   const today = structuredClone(samples[1]); today.hearings[0].date = "2026-10-10"; today.hearings[0].time = "14:00";
@@ -63,35 +68,39 @@ test("failed saves retain the original record and show a retryable error", async
     posted = route.request().postDataJSON().data;
     await route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: { status: "PERMISSION_DENIED", message: "Update rejected by the server." } }) });
   });
-  await row(page, "100001").locator('button').last().click();
+  await tab(page, "new").click();
+  await row(page, "100001").getByRole('button',{name:'BC-2026-100001',exact:true}).click();
   await page.locator('[data-tracking-action="review"]').click();
   await page.locator('#trackingSave').click();
-  await expect(page.locator('#trackingError')).toContainText("Update rejected");
-  await expect(page.locator('#trackingSave')).toBeEnabled();
+  await expect(page.locator('.background-task--failed')).toContainText("Access permission denied");
+  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeEnabled();
   expect(posted.action).toBe("review"); expect(posted.expectedVersion).toBe(0);
   expect(posted.operationId).toMatch(/^[a-z0-9-]{36}$/);
   expect(await page.evaluate(() => window.__adminSession.state.complaints[0].status)).toBe("filed");
 });
-test("third hearing records a conclusion and displays closed-unsettled without documents", async ({ page }) => {
+test("third barangay hearing advances to lupon scheduling without CFA issuance", async ({ page }) => {
   await openPage(page);
   let posted;
   await page.route('**/advanceComplaintWorkflow', async route => {
     posted = route.request().postDataJSON().data;
-    const update = { status: "closed", closureOutcome: "unsettled", workflowVersion: 7, resolutionSummary: posted.summary,
+    const update = { status: "awaiting_next_schedule", workflowVersion: 7,
       hearings: [{ ...samples[2].hearings[0], status: "completed", outcome: "no_agreement", summary: posted.summary }] };
-    const event = { action: "record_result", label: "Closed — Unsettled", status: "closed", note: posted.summary, date: "2026-10-10T04:00:00Z" };
+    const event = { action: "record_result", label: "Hearing Result Recorded", status: "awaiting_next_schedule", note: posted.summary, date: "2026-10-10T04:00:00Z" };
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: { success: true, workflowVersion: 7, update, event } }) });
   });
-  await tab(page, "result_pending").click();
-  await row(page, "100003").locator('button').last().click();
+  await tab(page, "active").click();
+  await row(page, "100003").getByRole('button',{name:'BC-2026-100003',exact:true}).click();
   await page.locator('[data-tracking-action="record_result"]').click();
-  await expect(page.locator('#trackingForm')).toContainText("No agreement closes the tracking record as unsettled");
+  await expect(page.locator('#trackingForm')).toContainText("continue to Lupon Hearing 1 of 3");
   await page.locator('[name="outcome"][value="no_agreement"]').check();
   await page.locator('[name="complainantAttendance"]').check();
   await page.locator('[name="respondentAttendance"]').check();
   await page.locator('[name="summary"]').fill("Both parties attended. No agreement was reached about repayment.");
   await page.locator('#trackingSave').click();
-  await expect(page.locator('#modalBody')).toContainText("Closed — Unsettled");
+  await page.getByRole('button', { name: 'Schedule next hearing', exact: true }).click();
+  await expect(page.locator('#modalBody')).toContainText("Lupon Hearing 1 of 3");
+  await expect(page.locator('[name="date"]')).toBeVisible();
+  await expect(page.locator('[data-tracking-action="issue_cfa"]')).toHaveCount(0);
   await expect(page.locator('[data-tracking-action="schedule_hearing"]')).toHaveCount(0);
   await expect(page.locator('.tracking-other-actions')).toHaveCount(0);
   await expect(page.locator('#officialSummonsModalOverlay')).toBeHidden();
@@ -101,11 +110,11 @@ test("third hearing records a conclusion and displays closed-unsettled without d
 test("legacy records require confirmation instead of inferring hearings from summons", async ({ page }) => {
   const old = { ...samples[1], complaintTrackingVersion: 0, status: "being_handled", hearings: [], summons: { summonsCount: 3, appearanceDate: "October 11, 2026" } };
   await openPage(page, [old]);
-  await expect(row(page, "100002").locator('button').last()).toHaveText("View");
+  await expect(row(page, "100002").getByRole('button',{name:'Actions for complaint BC-2026-100002',exact:true})).toBeVisible();
   await row(page, "100002").locator('button').first().click();
   await expect(page.locator('[data-tracking-action="confirm_tracking"]')).toBeVisible();
   await expect(page.locator('[data-tracking-action="schedule_hearing"]')).toHaveCount(0);
-  await expect(page.locator('#modalBody')).toContainText("Previous schedules cannot establish");
+  await expect(page.locator('#modalBody')).toContainText("Check the barangay records");
   await page.locator('[data-tracking-action="confirm_tracking"]').click();
   await expect(page.locator('[name="completedHearings"]')).toHaveValue("");
 });
@@ -122,11 +131,12 @@ test("existing official summons form prints and sends a confirmed tanod handoff 
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: { success: true, workflowVersion: record.workflowVersion, update: plan.update, event: plan.event } }) });
   });
   await tab(page, "scheduled").click();
-  await expect(row(page, "100002").locator('button').last()).toHaveText("View");
-  await row(page, "100002").locator('button').last().click();
+  await expect(row(page, "100002").getByRole('button',{name:'Actions for complaint BC-2026-100002',exact:true})).toBeVisible();
+  await row(page, "100002").getByRole('button',{name:'BC-2026-100002',exact:true}).click();
   await page.locator('[data-tracking-action="issue_summons"]').click();
   await expect(page.locator('#issueSummonsForm')).toBeVisible();
   await expect(page.locator('#summonsAppearanceDate')).toHaveValue("2026-10-11");
+  await expect(page.locator('#summonsTanodName')).toHaveValue("");
   await page.locator('#summonsTanodName').fill("Pedro Reyes");
   await page.locator('#summonsRespondentAddress').fill("Sitio Riverside");
   await page.locator('#modalActions button').filter({ hasText: "Generate a Summon" }).click();
@@ -208,27 +218,30 @@ test("next task opens directly and waiting residents do not appear as work to do
   const ready = { ...structuredClone(pending), id: "BC-2026-100007", summons: { ...pending.summons, deliveryStatus: "handed_to_tanod" } };
   const waiting = { ...structuredClone(samples[0]), id: "BC-2026-100008", status: "needs_information", requestedInfoMessage: "Please provide the incident date." };
   await openPage(page, [samples[0], samples[2], pending, ready, waiting]);
-  await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(4);
+  await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(1);
   await expect(page.locator('.complaint-reports-table tbody tr').first()).toContainText("100003");
   await expect(row(page, "100008")).toHaveCount(0);
-  await expect(row(page, "100006").locator('button').last()).toHaveText("View");
-  await row(page, "100006").locator('button').last().click();
+  await tab(page, "scheduled").click();
+  await expect(row(page, "100006").getByRole('button',{name:'Actions for complaint BC-2026-100006',exact:true})).toBeVisible();
+  await row(page, "100006").getByRole('button',{name:'BC-2026-100006',exact:true}).click();
   await page.locator('[data-tracking-action="notify_summons"]').click();
   await expect(page.locator('#notifyReporterForm')).toBeVisible();
   await page.locator('#modalClose').click();
   await tab(page, "needs_information").click();
-  await row(page, "100008").locator('button').last().click();
-  await expect(page.locator('#trackingNextTitle')).toHaveText("Needs Information");
+  await row(page, "100008").getByRole('button',{name:'BC-2026-100008',exact:true}).click();
+  await expect(page.locator('#trackingNextTitle')).toHaveText("Waiting for resident");
   await expect(page.locator('.tracking-next-step .button--primary')).toHaveCount(0);
 });
 
 test("guided complaint view keeps one main action and hides occasional actions", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await openPage(page, [samples[0], samples[1]]);
+  await tab(page, "scheduled").click();
   await row(page, "100002").locator('button').first().click();
   await expect(page.locator('.tracking-next-step .button--primary')).toHaveCount(1);
-  await expect(page.locator('.tracking-next-step .button--primary')).toHaveText("Issue Summon");
-  await expect(page.locator('.tracking-steps [aria-current="step"]')).toContainText("Prepare summons");
+  await expect(page.locator('.tracking-next-step .button--primary')).toHaveText("Prepare summons");
+  await expect(page.locator(".tracking-steps")).toHaveCount(0);
+  await expect(page.locator("#trackingNextTitle")).toHaveText("Prepare the summons");
   await expect(page.locator('[data-tracking-action="withdraw"]')).toBeHidden();
   await expect(page.locator('[data-tracking-action="edit_schedule"]')).toBeVisible();
   await expect(page.locator('.tracking-other-actions')).toHaveCount(0);
@@ -239,6 +252,7 @@ test("guided complaint view keeps one main action and hides occasional actions",
   await page.screenshot({ path: test.info().outputPath("guided-complaint-narrow.png") });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.locator('#modalClose').click();
+  await tab(page, "new").click();
   await row(page, "100001").locator('button').first().click();
   await page.screenshot({ path: test.info().outputPath("guided-filed-complaint.png") });
 });

@@ -1,6 +1,41 @@
 const { test, expect } = require('@playwright/test');
 const { loadAdminSession } = require('./helpers/admin-session');
 
+test('People account badges and account details use each organization saved sector', async ({ page }) => {
+  await loadAdminSession(page, 'super_admin');
+  await page.evaluate(() => {
+    const { state } = window.__adminSession;
+    state.organizations = [
+      { id: 'public-org', name: 'Public Office', organizationSector: 'public' },
+      { id: 'private-org', name: 'Private Group', organizationSector: 'private' },
+      { id: 'legacy-org', name: 'Legacy Office', sector: 'public' },
+    ];
+    const member = (id, name, organizationId, extra = {}) => ({
+      id, name, organizationId, role: 'organization', email: `${id}@example.test`,
+      status: 'active', accountStatus: 'active', positionTitle: 'Organization Staff', ...extra,
+    });
+    state.users = [
+      member('public-member', 'Public Member', 'public-org', { organizationSector: 'private' }),
+      member('private-member', 'Private Member', 'private-org', { organizationSector: 'public' }),
+      member('legacy-member', 'Legacy Member', 'legacy-org'),
+      member('cached-member', 'Cached Member', 'missing-org', { organizationSector: 'private' }),
+      member('unknown-member', 'Unknown Member', ''),
+    ];
+    state.peopleTab = 'organization';
+    window.navigateTo('directory');
+  });
+  for (const [name, label] of [
+    ['Public Member', 'Public Organization'], ['Private Member', 'Private Organization'],
+    ['Legacy Member', 'Public Organization'], ['Cached Member', 'Private Organization'],
+    ['Unknown Member', 'Organization'],
+  ]) {
+    await expect(page.locator('#userTable tr').filter({ hasText: name }).locator('.account-type-chip')).toContainText(label);
+  }
+  await expect(page.locator('#userTable')).not.toContainText('Partner Organization');
+  await page.evaluate(() => window.openUser('public-member'));
+  await expect(page.locator('#modalBody .account-type-chip')).toContainText('Public Organization');
+});
+
 async function loadMixedTeam(page) {
   await loadAdminSession(page, 'organization');
   await page.evaluate(() => {

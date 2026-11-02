@@ -49,6 +49,7 @@ test('IT complaint records cover all 42 barangays and refresh the open page', as
     return { complaints: state.complaints.length, concerns: state.concerns.map(item => item.id) };
   });
   expect(loaded).toEqual({ complaints: 42, concerns: ['concern'] });
+  await page.locator('.complaint-summary-card[data-stage="new"]').click();
   await expect(page.locator('.complaint-reports-table tbody tr')).toHaveCount(42);
   await page.locator('.complaint-reports-table tbody tr button').first().click();
   await expect(page.locator('[data-tracking-action="review"]')).toBeVisible();
@@ -69,6 +70,8 @@ for (const role of ['lgu', 'organization', 'mayor']) {
 
 test('IT admins can save a complaint review through the existing workflow', async ({ page }) => {
   await setup(page);
+  await page.route('**/getSummonsOfficials', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: {
+    barangayId: 'barili_vito', barangay: 'Vito', captainName: 'Captain Cruz', secretaryName: 'Secretary Ramos' } }) }));
   await page.route('**/advanceComplaintWorkflow', async route => {
     const input = route.request().postDataJSON().data;
     expect(input.action).toBe('review');
@@ -86,10 +89,12 @@ test('IT admins can save a complaint review through the existing workflow', asyn
       complaint: { respondentName: 'Test Respondent' } }]);
     window.navigateTo('complaints');
   });
+  await page.locator('.complaint-summary-card[data-stage="new"]').click();
   await page.locator('.complaint-reports-table tbody tr button').first().click();
   await page.locator('[data-tracking-action="review"]').click();
   await page.locator('#trackingSave').click();
-  await expect(page.locator('#modalBody')).toContainText('Under Review');
+  await page.getByRole('button', { name: 'Set hearing', exact: true }).click();
+  await expect(page.locator('#issueSummonsForm')).toBeVisible();
   expect(await page.evaluate(() => window.__itComplaints.state.complaints[0].workflowVersion)).toBe(1);
 });
 

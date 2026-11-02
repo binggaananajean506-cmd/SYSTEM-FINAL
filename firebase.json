@@ -33,14 +33,19 @@
     "ignore": ["firebase.json", "**/.*"],
     "cleanUrls": true,
     "trailingSlash": false,
-    "redirects": [
-      { "source": "/", "destination": "/admin", "type": 302 }
-    ],
+    "redirects": [],
     "rewrites": [
       { "source": "/admin/**", "destination": "/admin/index.html" },
       { "source": "/admin", "destination": "/admin/index.html" }
     ],
     "headers": [
+      {
+        "source": "/downloads/*.apk",
+        "headers": [
+          { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+          { "key": "Content-Disposition", "value": "attachment; filename=\"app-release.apk\"" }
+        ]
+      },
       {
         "source": "**",
         "headers": [

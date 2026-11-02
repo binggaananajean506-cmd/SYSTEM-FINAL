@@ -21,6 +21,7 @@ class _ActivityRepository implements SubmissionRepository {
       userId: 'resident',
       date: DateTime(2026, 10, 1),
       status: 'being_handled',
+      originalReporterName: 'Maria Santos',
     ),
     Submission(
       id: 'BC-1',
@@ -138,6 +139,13 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(MyActivityCard), findsOneWidget);
         expect(find.text('Repair the streetlight'), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.text('Repair the streetlight')).style?.fontWeight,
+          FontWeight.w700,
+        );
+        expect(find.text('The streetlight near the chapel is broken.'), findsOneWidget);
+        expect(find.text('Maria Santos'), findsNothing);
+        expect(find.textContaining('Originally reported by'), findsNothing);
         expect(find.text('IN PROGRESS'), findsOneWidget);
         expect(
           tester.getSize(find.byType(MyActivityCard)).height,
@@ -148,6 +156,11 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(MyActivityCard), findsOneWidget);
         expect(find.text('Noise complaint'), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.text('Noise complaint')).style?.fontWeight,
+          FontWeight.w700,
+        );
+        expect(find.text('Loud karaoke late at night.'), findsOneWidget);
         expect(find.text('UNDER REVIEW'), findsOneWidget);
         await tester.ensureVisible(find.text('Track →'));
         await tester.tap(find.text('Track →'));
@@ -215,5 +228,123 @@ void main() {
     await tester.pump();
     expect(taps, 1);
     semantics.dispose();
+  });
+
+  testWidgets('private activity card shows report details without identity',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: MyActivityCard(
+          title: 'Water outage',
+          description: 'No water since Saturday.',
+          category: 'Water Services',
+          categoryColor: Colors.blue,
+          statusLabel: 'Active',
+          statusColor: Colors.green,
+          originalReporter: 'Maria Santos',
+          photoUrl: 'https://example.com/photo.jpg',
+          timeAgo: '2 days ago',
+          onTap: () {},
+        ),
+      ),
+    ));
+
+    expect(find.text('No water since Saturday.'), findsOneWidget);
+    expect(find.textContaining('2 days ago'), findsOneWidget);
+    expect(find.text('Maria Santos'), findsNothing);
+    expect(find.textContaining('Originally reported by'), findsNothing);
+    expect(find.byType(PosterAvatar), findsNothing);
+    final title = tester.widget<Text>(find.text('Water outage'));
+    expect(title.style?.fontWeight, FontWeight.w700);
+  });
+
+  testWidgets('complaint card shows place without the Location label',
+      (tester) async {
+    final repository = _ActivityRepository();
+    repository.items
+      ..clear()
+      ..add(Submission(
+        id: 'BC-2',
+        title: 'Boundary complaint',
+        description: '',
+        category: 'Barangay Complaint',
+        type: 'Complaint',
+        userId: 'resident',
+        location: 'Togbily, Barangay Vito',
+        date: DateTime(2026, 10, 1),
+        status: 'under_review',
+      ));
+    await tester.pumpWidget(MaterialApp(
+      home: ConcernCenterPage(
+        initialCenterTab: 1,
+        initialActivitySubTab: 1,
+        repository: repository,
+        categoryLoader: () async => const [],
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Boundary complaint'), findsOneWidget);
+    expect(find.text('Togbily, Barangay Vito'), findsOneWidget);
+    expect(find.textContaining('Location:'), findsNothing);
+    expect(find.byType(PosterAvatar), findsNothing);
+  });
+
+  testWidgets('complaint card removes a saved Location prefix', (tester) async {
+    final repository = _ActivityRepository();
+    repository.items
+      ..clear()
+      ..add(Submission(
+        id: 'BC-3',
+        title: 'Property complaint',
+        description: 'Location: Cagay, Barangay Vito',
+        category: 'Barangay Complaint',
+        type: 'Complaint',
+        userId: 'resident',
+        date: DateTime(2026, 10, 1),
+        status: 'under_review',
+      ));
+    await tester.pumpWidget(MaterialApp(
+      home: ConcernCenterPage(
+        initialCenterTab: 1,
+        initialActivitySubTab: 1,
+        repository: repository,
+        categoryLoader: () async => const [],
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cagay, Barangay Vito'), findsOneWidget);
+    expect(find.textContaining('Location:'), findsNothing);
+  });
+
+  testWidgets('complaint card removes Location from saved form details',
+      (tester) async {
+    final repository = _ActivityRepository();
+    repository.items
+      ..clear()
+      ..add(Submission(
+        id: 'BC-4',
+        title: 'Boundary complaint',
+        description: '[Location: Cagay, Barangay Vito]\n\nProperty boundary dispute.',
+        category: 'Barangay Complaint',
+        type: 'Complaint',
+        userId: 'resident',
+        date: DateTime(2026, 10, 1),
+        status: 'under_review',
+      ));
+    await tester.pumpWidget(MaterialApp(
+      home: ConcernCenterPage(
+        initialCenterTab: 1,
+        initialActivitySubTab: 1,
+        repository: repository,
+        categoryLoader: () async => const [],
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cagay, Barangay Vito\n\nProperty boundary dispute.'),
+        findsOneWidget);
+    expect(find.textContaining('Location:'), findsNothing);
   });
 }

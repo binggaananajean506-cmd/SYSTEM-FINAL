@@ -7,7 +7,10 @@ const { randomBytes, randomInt, createHash } = require("crypto");
 const { DELEGABLE_PERMISSIONS, accessPolicyId, policyAllows, policyScopeForVerification } = require("./access_policy");
 const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { HttpsError, onCall } = require("firebase-functions/v2/https");
+const { processNotificationJob } = require("./notification_outbox");
+const { canDeleteConcernRecord, canDeleteComplaintRecord } = require("./concern_cleanup");
 const { createResidentSignup } = require("./resident_signup");
+const { summonsBarangay, selectSummonsOfficials, manualTanodName } = require("./summons_officials");
 const { defineSecret, defineString } = require("firebase-functions/params");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const {
@@ -925,8 +928,8 @@ async function activeUserCaller(request) {
   return { id: snapshot.id, ...profile, role: canonicalRole(profile.role) };
 }
 
-async function verificationOfficialCaller(request) {
-  const actor = await activeUserCaller(request);
+async function verificationOfficialCaller(request, signedInActor) {
+  const actor = signedInActor || await activeUserCaller(request);
   const policy = await actorPolicy(actor);
   const allowed = policyAllows(policy, 'verifications:local', profileCanVerifyResidents(actor));
   const barangay = BARANGAY_ROLES.has(actor.role) ? canonicalBarangayName(actor.barangay) : '';
@@ -1000,6 +1003,44 @@ async function sendNormalPushToUsers(userIds, { title, body, type, referenceId }
     },
   });
 }
+
+function queueWebNotification(transaction, payload) {
+  transaction.set(db.collection("web_notification_outbox").doc(), {
+    ...payload, status: "pending", attempts: 0, createdAt: FieldValue.serverTimestamp(),
+  });
+}
+
+exports.deliverWebActionNotification = onDocumentCreated({
+  document: "web_notification_outbox/{jobId}", region: REGION, retry: true,
+  timeoutSeconds: 120, maxInstances: 5,
+}, async event => {
+  if (!event.data) return;
+  const started = Date.now();
+  const result = await processNotificationJob(event.data.ref, async (job, jobId) => {
+    const recipients = new Set(job.userIds || []);
+    if (job.kind === "concern") {
+      const reports = await db.collection("submissions").doc(job.referenceId).collection("reports").limit(200).get();
+      const batch = db.batch();
+      let added = 0;
+      for (const report of reports.docs) {
+        const uid = String(report.id || report.data().reporterId || "");
+        if (!uid || recipients.has(uid)) continue;
+        recipients.add(uid);
+        const suffix = createHash("sha256").update(uid).digest("hex");
+        batch.set(db.collection("notifications").doc(`${jobId}_${suffix}`), {
+          userId: uid, type: job.type, referenceId: job.referenceId, relatedEntityType: "concern",
+          title: job.title, message: job.body, navigation: { route: "/complain" },
+          read: false, createdAt: job.createdAt,
+        });
+        added++;
+      }
+      if (added) await batch.commit();
+    }
+    if (recipients.size) await sendNormalPushToUsers([...recipients], job);
+  });
+  console.info("[WEB_NOTIFICATION] Delivery", { ...result, durationMs: Date.now() - started });
+  if (result.failed) console.error("[WEB_NOTIFICATION] Retry limit reached", { jobId: event.params.jobId });
+});
 
 /** Sends one FCM message to every active registered device of these users. */
 async function sendMessageToUserDevices(userIds, message) {
@@ -1691,9 +1732,10 @@ exports.listResidentVerifications = onCall({ region: REGION }, async (request) =
 });
 
 exports.reviewResidentVerification = onCall({ region: REGION }, async (request) => {
+  const started = Date.now();
   const signedInActor = await activeUserCaller(request);
   const oversight = isItAdministrator(signedInActor.role);
-  const actor = oversight ? signedInActor : await verificationOfficialCaller(request);
+  const actor = oversight ? signedInActor : await verificationOfficialCaller(request, signedInActor);
   const residentId = requiredText(request.data?.residentId, "Resident", 160);
   const decision = String(request.data?.decision || "").trim().toLowerCase();
   if (!["approved", "additional_document_required", "rejected"].includes(decision)) {
@@ -1744,6 +1786,14 @@ exports.reviewResidentVerification = onCall({ region: REGION }, async (request) 
         ? `Your residency verification was rejected by Barangay ${residentBarangay}. Reason: ${rejectionReason}.`
         : `Your residency could not yet be confirmed. Reason: ${rejectionReason}.`;
     const verifiedBarangayId = residentBarangayId;
+    queueWebNotification(transaction, {
+      kind: "push", userIds: [residentId], type: "verification_update", referenceId: residentId,
+      title: verified ? "Account verified" : rejected ? "Verification rejected" : "Verification needs attention",
+      body: verified
+        ? oversight ? "Your residency has been verified by the LGU IT Department." : `Your residency has been verified by Barangay ${actor.barangay}.`
+        : rejected ? `Your residency verification was rejected. Reason: ${rejectionReason}.`
+          : `Your residency needs attention. Reason: ${rejectionReason}.`,
+    });
     transaction.update(reference, {
       status: verified ? "approved" : rejected ? "rejected" : decision,
       accountStatus: rejected ? "rejected" : "active",
@@ -1828,24 +1878,10 @@ exports.reviewResidentVerification = onCall({ region: REGION }, async (request) 
     }, { merge: true });
   });
   const verified = decision === "approved";
-  const rejected = decision === "rejected";
-  const title = verified ? "Account verified" : rejected ? "Verification rejected" : "Verification needs attention";
-  const body = verified
-    ? oversight
-      ? "Your residency has been verified by the LGU IT Department."
-      : `Your residency has been verified by Barangay ${actor.barangay}.`
-    : rejected
-      ? `Your residency verification was rejected. Reason: ${rejectionReason}.`
-      : `Your residency needs attention. Reason: ${rejectionReason}.`;
-  await sendNormalPushToUsers([residentId], {
-    title,
-    body,
-    type: "verification_update",
-    referenceId: residentId,
-  }).catch((error) => console.error("[VERIFICATION] Resident push failed", { code: error.code }));
   console.info("[VERIFICATION] Review completed", {
     decision,
     reviewerId: actor.id,
+    durationMs: Date.now() - started,
   });
   return { residentId, status: verified ? "verified" : decision };
 });
@@ -5900,14 +5936,210 @@ exports.syncPublicConcernSummary = onDocumentWritten(
     const concern = event.data.after.exists ? event.data.after.data() : null;
     if (Number(previous?.schemaVersion || 0) < 4 && Number(concern?.schemaVersion || 0) < 4) return;
     const summaryRef = db.collection("public_concern_summaries").doc(event.params.submissionId);
-    const summary = publicConcernSummary(event.params.submissionId, concern);
-    if (!summary) {
-      await summaryRef.delete();
-      return;
-    }
-    await summaryRef.set(summary);
+    // Events can arrive out of order. An older update must not recreate the
+    // public summary of a concern an administrator has since deleted.
+    await db.runTransaction(async transaction => {
+      const latest = await transaction.get(db.collection("submissions").doc(event.params.submissionId));
+      if (!latest.exists) {
+        transaction.delete(summaryRef);
+        return;
+      }
+      const data = latest.data();
+      let origName = data.originalReporterName || data.reporterName || data.submitterName;
+      let origPhotoUrl = data.originalReporterPhotoUrl || data.reporterPhotoUrl || data.profilePhotoUrl || data.photoUrl || "";
+      const creatorId = data.userId || data.createdBy || data.residentId;
+      if (creatorId && ((!origName || origName === "Resident") || !origPhotoUrl)) {
+        const uDoc = await transaction.get(db.collection("users").doc(creatorId));
+        if (uDoc.exists) {
+          const uData = uDoc.data();
+          if (!origName || origName === "Resident") {
+            origName = uData.name || uData.displayName || uData.fullName || origName;
+          }
+          if (!origPhotoUrl) {
+            origPhotoUrl = uData.profilePhotoUrl || uData.photoUrl || uData.avatarUrl || "";
+          }
+        }
+      }
+      origName = (origName || "Resident").trim();
+      const summary = publicConcernSummary(event.params.submissionId, {
+        ...data,
+        originalReporterName: origName,
+        reporterName: origName,
+        originalReporterPhotoUrl: origPhotoUrl,
+        reporterPhotoUrl: origPhotoUrl,
+      });
+      if (summary) transaction.set(summaryRef, summary);
+      else transaction.delete(summaryRef);
+    });
   },
 );
+
+exports.getPublicConcernReporters = onCall({ region: REGION }, async (request) => {
+  const resident = await activeUserCaller(request);
+  if (!resident) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+  const input = request.data || {};
+  const concernId = String(input.concernId || "").trim();
+  const concernIds = Array.isArray(input.concernIds)
+    ? input.concernIds.map(String).map(s => s.trim()).filter(Boolean)
+    : [];
+
+  async function resolveConcernReporters(id) {
+    if (!id) return null;
+    const subRef = db.collection("submissions").doc(id);
+    const subSnap = await subRef.get();
+    if (!subSnap.exists) {
+      const pubSnap = await db.collection("public_concern_summaries").doc(id).get();
+      if (!pubSnap.exists) return null;
+      const pubData = pubSnap.data();
+      let origName = pubData.originalReporterName || pubData.reporterName || "Resident";
+      let origPhotoUrl = pubData.originalReporterPhotoUrl || pubData.reporterPhotoUrl || "";
+      const origId = pubData.userId || pubData.residentId || pubData.createdBy || "";
+      if (origId && ((!origName || origName === "Resident") || !origPhotoUrl)) {
+        const uSnap = await db.collection("users").doc(origId).get();
+        if (uSnap.exists) {
+          const uData = uSnap.data();
+          if (!origName || origName === "Resident") {
+            origName = uData.name || uData.displayName || uData.fullName || origName;
+          }
+          if (!origPhotoUrl) {
+            origPhotoUrl = uData.profilePhotoUrl || uData.photoUrl || uData.avatarUrl || "";
+          }
+        }
+      }
+      const rawReporters = Array.isArray(pubData.reporters) ? pubData.reporters : [];
+      const joined = rawReporters.filter(r => !r.isOriginal).map(r => ({
+        id: r.id || "",
+        name: r.name || r.reporterName || "Resident",
+        photoUrl: r.photoUrl || r.profilePhotoUrl || "",
+        isOriginal: false,
+      }));
+      return {
+        concernId: id,
+        originalReporter: {
+          id: origId,
+          name: origName,
+          photoUrl: origPhotoUrl,
+          isOriginal: true,
+        },
+        reporters: joined,
+        reporterNames: pubData.reporterNames || [origName],
+        count: pubData.reporterCount || (1 + joined.length),
+      };
+    }
+
+    const data = subSnap.data();
+    if (data.visibility !== "public") {
+      throw new HttpsError("permission-denied", "This concern is not public.");
+    }
+
+    let origName = data.originalReporterName || data.reporterName || data.submitterName;
+    let origPhotoUrl = data.originalReporterPhotoUrl || data.reporterPhotoUrl || data.profilePhotoUrl || data.photoUrl || "";
+    const origId = data.userId || data.residentId || data.createdBy || "";
+    if (origId && ((!origName || origName === "Resident") || !origPhotoUrl)) {
+      const userSnap = await db.collection("users").doc(origId).get();
+      if (userSnap.exists) {
+        const uData = userSnap.data();
+        if (!origName || origName === "Resident") {
+          origName = uData.name || uData.displayName || uData.fullName || origName;
+        }
+        if (!origPhotoUrl) {
+          origPhotoUrl = uData.profilePhotoUrl || uData.photoUrl || uData.avatarUrl || "";
+        }
+      }
+    }
+    origName = (origName || "Resident").trim();
+
+    const reportsSnap = await subRef.collection("reports").get();
+    const joined = [];
+    for (const rDoc of reportsSnap.docs) {
+      const rData = rDoc.data();
+      let rName = rData.reporterName;
+      let rPhotoUrl = rData.reporterPhotoUrl || rData.profilePhotoUrl || rData.photoUrl || "";
+      const rId = rData.reporterId || rDoc.id;
+      if (rId && ((!rName || rName === "Resident") || !rPhotoUrl)) {
+        const uSnap = await db.collection("users").doc(rId).get();
+        if (uSnap.exists) {
+          const uData = uSnap.data();
+          if (!rName || rName === "Resident") {
+            rName = uData.name || uData.displayName || uData.fullName || rName;
+          }
+          if (!rPhotoUrl) {
+            rPhotoUrl = uData.profilePhotoUrl || uData.photoUrl || uData.avatarUrl || "";
+          }
+        }
+      }
+      rName = (rName || "Resident").trim();
+      joined.push({
+        id: rId,
+        name: rName,
+        photoUrl: rPhotoUrl,
+        isOriginal: false,
+      });
+    }
+
+    const seenIds = new Set();
+    const seenNames = new Set();
+    if (origId) seenIds.add(origId);
+    if (origName && origName.toLowerCase() !== "resident") seenNames.add(origName.toLowerCase());
+
+    const dedupedJoined = [];
+    for (const j of joined) {
+      if (j.id && seenIds.has(j.id)) continue;
+      if (j.name && j.name.toLowerCase() !== "resident" && seenNames.has(j.name.toLowerCase())) continue;
+      if (j.id) seenIds.add(j.id);
+      if (j.name && j.name.toLowerCase() !== "resident") seenNames.add(j.name.toLowerCase());
+      dedupedJoined.push(j);
+    }
+
+    const allReporters = [
+      { id: origId, name: origName, photoUrl: origPhotoUrl, isOriginal: true },
+      ...dedupedJoined,
+    ];
+    const reporterNames = allReporters.map(r => r.name);
+    const count = allReporters.length;
+
+    // Self-healing: update public_concern_summaries in Firestore
+    const summaryRef = db.collection("public_concern_summaries").doc(id);
+    await summaryRef.set({
+      originalReporterName: origName,
+      reporterName: origName,
+      originalReporterPhotoUrl: origPhotoUrl,
+      reporterPhotoUrl: origPhotoUrl,
+      reporters: allReporters,
+      reporterNames,
+      reporterCount: count,
+    }, { merge: true }).catch(() => {});
+
+    return {
+      concernId: id,
+      originalReporter: { id: origId, name: origName, photoUrl: origPhotoUrl, isOriginal: true },
+      reporters: dedupedJoined,
+      reporterNames,
+      count,
+    };
+  }
+
+  if (concernIds.length > 0) {
+    const results = {};
+    for (const id of concernIds.slice(0, 30)) {
+      try {
+        const res = await resolveConcernReporters(id);
+        if (res) results[id] = res;
+      } catch (_) {}
+    }
+    return { results };
+  }
+
+  if (concernId) {
+    const res = await resolveConcernReporters(concernId);
+    if (!res) throw new HttpsError("not-found", "Concern not found.");
+    return res;
+  }
+
+  throw new HttpsError("invalid-argument", "Provide concernId or concernIds.");
+});
 
 exports.submitConcern = onCall({ region: REGION }, async (request) => {
   const resident = await activeUserCaller(request);
@@ -6020,7 +6252,8 @@ exports.submitConcern = onCall({ region: REGION }, async (request) => {
       };
       transaction.create(reportRef, {
         reporterId: resident.id,
-        reporterName: String(resident.name || "Resident").slice(0, 100),
+        reporterName: String(resident.name || resident.displayName || "Resident").slice(0, 100),
+        reporterPhotoUrl: String(resident.profilePhotoUrl || resident.photoUrl || resident.avatarUrl || request.auth.token.picture || "").trim(),
         title, description, location,
         incidentDate: optionalText(input.incidentDate, 80),
         attachmentUrl: optionalText(input.attachmentUrl, 2048),
@@ -6072,7 +6305,8 @@ exports.submitConcern = onCall({ region: REGION }, async (request) => {
   if (recipientType === "barangay" && !barangayRoute) {
     throw new HttpsError("failed-precondition", "No active Barangay official can receive this concern yet.");
   }
-  const reporterName = String(resident.name || request.auth.token.name || "Resident").slice(0, 100);
+  const reporterName = String(resident.name || resident.displayName || request.auth.token.name || "Resident").slice(0, 100);
+  const reporterPhotoUrl = String(resident.profilePhotoUrl || resident.photoUrl || resident.avatarUrl || request.auth.token.picture || "").trim();
   const submission = {
     schemaVersion: 4,
     id,
@@ -6092,9 +6326,12 @@ exports.submitConcern = onCall({ region: REGION }, async (request) => {
     userId: resident.id,
     residentId: resident.id,
     createdBy: resident.id,
-    residentName: visibility === "public" ? "Resident" : reporterName,
+    residentName: reporterName,
     reporterName,
     submitterName: reporterName,
+    originalReporterName: reporterName,
+    originalReporterPhotoUrl: reporterPhotoUrl,
+    reporterPhotoUrl,
     reporterIds: [resident.id],
     reporterCount: 1,
     latestReportAt: now,
@@ -6680,7 +6917,69 @@ exports.listResidentConcernFlags = onCall({ region: REGION }, async (request) =>
   };
 });
 
+exports.deleteComplaint = onCall({ region: REGION }, async (request) => {
+  const actor = await approvedCaller(request);
+  if (!await actorCan(actor, "concerns")) throw new HttpsError("permission-denied", "Complaint access is disabled for this office.");
+  const submissionId = validComplaintReference(request.data?.submissionId);
+  if (!submissionId) throw new HttpsError("invalid-argument", "A valid complaint reference is required.");
+  if (request.data?.confirmDelete !== true) throw new HttpsError("invalid-argument", "Confirm the complaint deletion first.");
+  const reference = db.collection("submissions").doc(submissionId);
+  const auditReference = db.collection("audit_logs").doc(`complaint_deleted_${submissionId}`);
+  await db.runTransaction(async transaction => {
+    const [snapshot, receipt] = await Promise.all([transaction.get(reference), transaction.get(auditReference)]);
+    if (!snapshot.exists) {
+      if (receipt.exists && receipt.data().actorId === actor.id) return;
+      throw new HttpsError("not-found", "This complaint no longer exists.");
+    }
+    const complaint = snapshot.data();
+    if (!canDeleteComplaintRecord({ role: canonicalRole(actor.role), actorBarangayId: effectiveBarangayId(actor),
+      concernBarangayId: effectiveBarangayId(complaint), kind: complaint.kind })) {
+      throw new HttpsError("permission-denied", "Only administrators or this barangay's captain, vice captain or secretary can delete a complaint.");
+    }
+    transaction.set(auditReference, {
+      action: "complaint_deleted", targetType: "submission", targetId: submissionId,
+      actorId: actor.id, actorRole: canonicalRole(actor.role), actorEmail: actor.email || "",
+      barangayId: effectiveBarangayId(complaint), previousStatus: String(complaint.status || ""),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    transaction.delete(reference);
+  });
+  return { success: true, submissionId, deleted: true };
+});
+
+exports.deleteConcern = onCall({ region: REGION }, async (request) => {
+  const actor = await approvedCaller(request);
+  if (!await actorCan(actor, "concerns")) throw new HttpsError("permission-denied", "Concern access is disabled for this office.");
+  const submissionId = validConcernReference(request.data?.submissionId);
+  if (request.data?.confirmDelete !== true) throw new HttpsError("invalid-argument", "Confirm the concern deletion first.");
+  const reference = db.collection("submissions").doc(submissionId);
+  const auditReference = db.collection("audit_logs").doc(`concern_deleted_${submissionId}`);
+  await db.runTransaction(async transaction => {
+    const [snapshot, receipt] = await Promise.all([transaction.get(reference), transaction.get(auditReference)]);
+    if (!snapshot.exists) {
+      if (receipt.exists && receipt.data().actorId === actor.id) return;
+      throw new HttpsError("not-found", "This concern no longer exists.");
+    }
+    const concern = snapshot.data();
+    if (!canDeleteConcernRecord({ role: canonicalRole(actor.role), actorBarangayId: effectiveBarangayId(actor),
+      concernBarangayId: effectiveBarangayId(concern), kind: concern.kind })) {
+      throw new HttpsError("permission-denied", "Only administrators or this barangay's captain, vice captain or secretary can delete a concern. Complaint case files cannot be deleted here.");
+    }
+    transaction.set(auditReference, {
+      action: "concern_deleted", targetType: "submission", targetId: submissionId,
+      actorId: actor.id, actorRole: canonicalRole(actor.role), actorEmail: actor.email || "",
+      barangayId: effectiveBarangayId(concern), title: String(concern.title || "").slice(0, 200),
+      category: String(concern.category || "").slice(0, 160), previousStatus: String(concern.status || ""),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    transaction.delete(reference);
+    transaction.delete(db.collection("public_concern_summaries").doc(submissionId));
+  });
+  return { success: true, submissionId, deleted: true };
+});
+
 exports.reviewConcern = onCall({ region: REGION }, async (request) => {
+  const started = Date.now();
   const actor = await approvedCaller(request);
   if (!await actorCan(actor, 'concerns')) {
     throw new HttpsError('permission-denied', 'Concern access is disabled for this office.');
@@ -6696,7 +6995,6 @@ exports.reviewConcern = onCall({ region: REGION }, async (request) => {
   }
   const concernRef = db.collection("submissions").doc(submissionId);
   const auditRef = db.collection("audit_logs").doc();
-  let notifyContext = null;
   await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(concernRef);
     if (!snapshot.exists) throw new HttpsError("not-found", "Concern not found.");
@@ -6779,6 +7077,7 @@ exports.reviewConcern = onCall({ region: REGION }, async (request) => {
         handlingStartedAt: FieldValue.serverTimestamp(),
         handledBy: actor.id,
         handledByName: actorName,
+        handledByRole: canonicalRole(actor.role),
         handlingNote: note,
         progressNote: note,
       });
@@ -6827,6 +7126,7 @@ exports.reviewConcern = onCall({ region: REGION }, async (request) => {
       visibility: "public",
       actorId: actor.id,
       actorName,
+      actorRole: canonicalRole(actor.role),
     });
     transaction.update(concernRef, update);
     transaction.set(auditRef, {
@@ -6873,68 +7173,77 @@ exports.reviewConcern = onCall({ region: REGION }, async (request) => {
         createdAt: FieldValue.serverTimestamp(),
       });
     }
-    notifyContext = { userIds: Array.from(recipientUserIds), title: notifTitle, message: note, submissionId };
+    queueWebNotification(transaction, { kind: "concern", userIds: Array.from(recipientUserIds),
+      title: notifTitle, body: note, type: "concern_update", referenceId: submissionId });
   });
-  // Supplement recipients with any co-reporters found in the reports sub-collection.
-  // This is a safety net: if a resident joined via "I have the same concern", their
-  // reporterId is stored as a document ID in submissions/{id}/reports/{reporterId}.
-  // We check this in addition to the reporterIds array to guarantee no one is missed.
-  if (notifyContext) {
-    try {
-      const reportsSnap = await db.collection("submissions").doc(notifyContext.submissionId)
-        .collection("reports").limit(200).get();
-      const allRecipients = new Set(notifyContext.userIds);
-      reportsSnap.docs.forEach((doc) => {
-        const uid = doc.id || doc.data().reporterId;
-        if (uid) allRecipients.add(String(uid));
-      });
-      // Send in-app notifications to any newly discovered co-reporters
-      const existingIds = new Set(notifyContext.userIds);
-      const newRecipients = [...allRecipients].filter((uid) => !existingIds.has(uid));
-      if (newRecipients.length > 0) {
-        const batch = db.batch();
-        for (const uid of newRecipients) {
-          const notifRef = db.collection("notifications").doc();
-          batch.set(notifRef, {
-            userId: uid,
-            type: "concern_update",
-            referenceId: notifyContext.submissionId,
-            relatedEntityType: "concern",
-            title: notifyContext.title,
-            message: notifyContext.message,
-            navigation: { route: "/complain" },
-            read: false,
-            createdAt: FieldValue.serverTimestamp(),
-          });
-        }
-        await batch.commit();
-      }
-      // Send push to all recipients (original + newly discovered)
-      const pushUserIds = [...allRecipients];
-      if (pushUserIds.length > 0) {
-        await sendNormalPushToUsers(pushUserIds, {
-          title: notifyContext.title,
-          body: notifyContext.message,
-          type: "concern_update",
-          referenceId: notifyContext.submissionId,
-        });
-      }
-    } catch (err) {
-      console.error("[reviewConcern] Failed to send supplemental notifications:", err);
-      // Fall back to notifyContext.userIds only
-      if (notifyContext.userIds.length > 0) {
-        try {
-          await sendNormalPushToUsers(notifyContext.userIds, {
-            title: notifyContext.title,
-            body: notifyContext.message,
-            type: "concern_update",
-            referenceId: notifyContext.submissionId,
-          });
-        } catch (_) { }
-      }
-    }
-  }
+  console.info("[WEB_ACTION] Committed", { function: "reviewConcern", durationMs: Date.now() - started });
   return { submissionId, action, reviewed: true };
+});
+
+async function lookupSummonsOfficials(data) {
+  const identity = summonsBarangay(data);
+  if (!identity.barangayId) return { ...identity, captainName: "", secretaryName: "" };
+  const sources = await Promise.all([
+    db.collection("users").where("barangayId", "==", identity.barangayId).limit(1000).get(),
+    db.collection("users").where("barangayId", "==", identity.barangayId.replace(/^barili_/, "")).limit(1000).get(),
+    db.collection("users").where("barangay", "==", identity.barangay).limit(1000).get(),
+  ]);
+  const profiles = [...new Map(sources.flatMap(source => source.docs)
+    .map(doc => [doc.id, { ...doc.data(), id: doc.id }])).values()];
+  return selectSummonsOfficials(profiles, data);
+}
+
+exports.getSummonsOfficials = onCall({ region: REGION }, async (request) => {
+  const actor = await approvedCaller(request);
+  const id = validConcernReference(request.data?.submissionId);
+  const snapshot = await db.collection("submissions").doc(id).get();
+  if (!snapshot.exists) throw new HttpsError("not-found", "Case record not found.");
+  const data = snapshot.data();
+  const identity = summonsBarangay(data);
+  const role = canonicalRole(actor.role);
+  const reporter = [data.userId, data.createdBy, ...(data.reporterIds || [])].includes(actor.id);
+  const oversight = ["super_admin", "mayor"].includes(role);
+  const ownOffice = identity.barangayId && BARANGAY_CONCERN_ROLES.has(role)
+    && summonsBarangay({ barangayId: actor.barangayId, barangay: actor.barangay }).barangayId === identity.barangayId
+    && await actorCan(actor, "concerns");
+  if (!reporter && !oversight && !ownOffice) throw new HttpsError("permission-denied", "You cannot view this case's officials.");
+  return lookupSummonsOfficials(data);
+});
+
+exports.getConcernHandler = onCall({ region: REGION }, async (request) => {
+  const actor = await approvedCaller(request);
+  const snapshot = await db.collection("submissions").doc(validConcernReference(request.data?.submissionId)).get();
+  if (!snapshot.exists) throw new HttpsError("not-found", "Concern record not found.");
+  const data = snapshot.data();
+  const role = canonicalRole(actor.role);
+  const identity = summonsBarangay(data);
+  const sameBarangay = identity.barangayId && summonsBarangay({ barangayId: actor.barangayId, barangay: actor.barangay }).barangayId === identity.barangayId;
+  const reporter = [data.userId, data.createdBy, ...(data.reporterIds || [])].includes(actor.id);
+  const oversight = ["super_admin", "mayor"].includes(role);
+  const verifiedBarangay = summonsBarangay({ barangayId: actor.verifiedBarangayId || actor.barangayId, barangay: actor.barangay }).barangayId;
+  const reportBarangay = summonsBarangay({ barangayId: data.barangayId, barangay: data.barangay }).barangayId;
+  const publicResident = !isComplaint(data) && role === "resident" && data.visibility === "public"
+    && ["verified", "approved"].includes(String(actor.verificationStatus || "").toLowerCase())
+    && verifiedBarangay && verifiedBarangay === reportBarangay;
+  const ownOffice = BARANGAY_CONCERN_ROLES.has(role) && sameBarangay && await actorCan(actor, "concerns");
+  const departmentId = effectiveDepartmentId(actor);
+  const organizationId = String(actor.organizationId || "").trim();
+  const assignedDepartment = role === "lgu" && departmentId && departmentId === data.recipientDepartmentId && await actorCan(actor, "concerns");
+  const assignedOrganization = role === "organization" && organizationId && [data.organizationId, data.leadOrganizationId, ...(data.organizationIds || [])].includes(organizationId) && await actorCan(actor, "concerns");
+  if (!reporter && !oversight && !publicResident && !ownOffice && !assignedDepartment && !assignedOrganization) {
+    throw new HttpsError("permission-denied", "You cannot view this concern's handler.");
+  }
+  const lastHandlingEvent = [...(data.statusHistory || [])].reverse().find(entry => entry.action === "handle");
+  const eventId = String(lastHandlingEvent?.actorId || lastHandlingEvent?.performedBy || "");
+  const event = data.handledBy && data.handledBy !== eventId ? null : lastHandlingEvent;
+  const id = String(data.handledBy || event?.actorId || event?.performedBy || "").trim();
+  if (!id || id.includes("/") || id.length > 128) return { name: "", role: "" };
+  const handler = await db.collection("users").doc(id).get();
+  const profile = handler.data() || {};
+  const handlerRole = canonicalRole(profile.role || data.handledByRole || event?.actorRole);
+  if (!["super_admin", "mayor", "lgu", "organization", ...BARANGAY_CONCERN_ROLES].includes(handlerRole)) return { name: "", role: "" };
+  const name = String(profile.name || data.handledByName || event?.actorName || "").trim();
+  return { name: name === id || name.includes("@") ? "" : name.slice(0, 120), role: handlerRole };
 });
 
 exports.issueConcernSummons = onCall({ region: REGION }, async (request) => {
@@ -6954,6 +7263,7 @@ exports.issueConcernSummons = onCall({ region: REGION }, async (request) => {
   const concernRef = db.collection("submissions").doc(submissionId);
   const auditRef = db.collection("audit_logs").doc();
   let notifyContext = null;
+  let issuedOfficials = null;
 
   await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(concernRef);
@@ -6963,11 +7273,10 @@ exports.issueConcernSummons = onCall({ region: REGION }, async (request) => {
 
     // Only the case's own barangay officials (or municipal oversight) may
     // summon a resident, and never on a closed case.
-    const concernBarangayId = String(concern.barangayId
-      || barangayIdFor(canonicalBarangayName(concern.barangay)) || "").toLowerCase();
+    const concernBarangayId = summonsBarangay(concern).barangayId;
     const isOversight = ["super_admin", "mayor"].includes(canonicalRole(actor.role));
     const isOwnBarangayOfficial = BARANGAY_CONCERN_ROLES.has(canonicalRole(actor.role))
-      && effectiveBarangayId(actor) === concernBarangayId;
+      && summonsBarangay({ barangayId: actor.barangayId, barangay: actor.barangay }).barangayId === concernBarangayId;
     if (!isOversight && !isOwnBarangayOfficial) {
       throw new HttpsError("permission-denied", "Only this barangay's officials can issue a summons.");
     }
@@ -6976,7 +7285,9 @@ exports.issueConcernSummons = onCall({ region: REGION }, async (request) => {
     }
 
     const actorName = String(actor.name || actor.email || "Barangay Official");
-    const barangayName = canonicalBarangayName(concern.barangay) || concern.barangay || "Barangay";
+    const officials = await lookupSummonsOfficials(concern);
+    issuedOfficials = officials;
+    const barangayName = officials.barangay || "Barangay";
     const now = Timestamp.now();
 
     const summonsData = {
@@ -6984,6 +7295,9 @@ exports.issueConcernSummons = onCall({ region: REGION }, async (request) => {
       issuedBy: actor.id,
       issuedByName: actorName,
       barangay: barangayName,
+      barangayId: officials.barangayId,
+      officials,
+      assignedTanod: manualTanodName(optionalText(request.data?.assignedTanod, 100)),
       respondentName,
       respondentAddress,
       appearanceDate,
@@ -7068,7 +7382,7 @@ exports.issueConcernSummons = onCall({ region: REGION }, async (request) => {
     } catch (_) { }
   }
 
-  return { submissionId, summonsIssued: true };
+  return { submissionId, summonsIssued: true, officials: issuedOfficials };
 });
 
 
@@ -9104,6 +9418,7 @@ exports.submitComplaint = onCall({ region: REGION }, async (request) => {
 
 // Complaint mutations use server time, optimistic concurrency and durable retry receipts.
 exports.advanceComplaintWorkflow = onCall({ region: REGION }, async (request) => {
+  const started = Date.now();
   const actor = await approvedCaller(request);
   if (!["super_admin", "mayor"].includes(canonicalRole(actor.role)) && !await actorCan(actor, "concerns")) throw new HttpsError("permission-denied", "Complaint access is disabled for this office.");
   const input = request.data || {};
@@ -9114,17 +9429,16 @@ exports.advanceComplaintWorkflow = onCall({ region: REGION }, async (request) =>
   const ref = db.collection("submissions").doc(submissionId);
   const receiptRef = ref.collection("tracking_operations").doc(input.operationId);
   const fingerprint = createHash("sha256").update(JSON.stringify(Object.keys(input).sort().map((key) => [key, input[key]]))).digest("hex");
-  let notify = null;
   const result = await db.runTransaction(async (transaction) => {
-    notify = null;
     const [snapshot, receipt] = await Promise.all([transaction.get(ref), transaction.get(receiptRef)]);
     if (!snapshot.exists) throw new HttpsError("not-found", "Complaint record not found.");
     const data = snapshot.data();
     if (!isComplaint(data)) throw new HttpsError("failed-precondition", "This workflow applies only to complaints.");
     const role = canonicalRole(actor.role);
-    const barangayId = String(data.barangayId || barangayIdFor(canonicalBarangayName(data.barangay)) || "").toLowerCase();
+    const barangayId = summonsBarangay(data).barangayId;
     if (!["super_admin", "mayor"].includes(role)
-      && !(BARANGAY_CONCERN_ROLES.has(role) && barangayId && effectiveBarangayId(actor) === barangayId)) {
+      && !(BARANGAY_CONCERN_ROLES.has(role) && barangayId
+        && summonsBarangay({ barangayId: actor.barangayId, barangay: actor.barangay }).barangayId === barangayId)) {
       throw new HttpsError("permission-denied", "Only this barangay's officials can update this complaint.");
     }
     try {
@@ -9133,15 +9447,17 @@ exports.advanceComplaintWorkflow = onCall({ region: REGION }, async (request) =>
     } catch (error) { throw new HttpsError(error.code, error.message); }
     const now = Timestamp.now();
     let plan;
-    try { plan = planTrackingUpdate(data, input, now.toDate(), { id: actor.id, name: String(actor.name || actor.email || "Barangay Official"), role }); }
+    const summonsOfficials = input.action === "issue_summons" ? await lookupSummonsOfficials(data) : undefined;
+    try { plan = planTrackingUpdate(data, input, now.toDate(), { id: actor.id, name: String(actor.name || actor.email || "Barangay Official"), role, summonsOfficials }); }
     catch (error) { throw new HttpsError(error.code || "invalid-argument", error.message); }
+    const recipients = [...new Set([data.userId, ...(data.reporterIds || [])].filter(userId => typeof userId === "string" && userId.trim()))];
+    if (input.action === "notify_cfa" && !recipients.length) throw new HttpsError("failed-precondition", "This complaint is not linked to a resident account to notify.");
     transaction.update(ref, { ...plan.update, statusHistory: FieldValue.arrayUnion(plan.event) });
     transaction.set(db.collection("audit_logs").doc(), {
       action: `complaint_tracking_${input.action}`, targetType: "submission", targetId: submissionId,
       actorId: actor.id, actorRole: role, createdAt: now, operationId: input.operationId,
       previousStatus: data.status, newStatus: plan.update.status || data.status,
     });
-    const recipients = [...new Set([data.userId, ...(data.reporterIds || [])].filter(Boolean))];
     for (const userId of recipients) transaction.set(db.collection("notifications").doc(), {
       userId, type: "complaint_update", referenceId: submissionId, relatedEntityType: "complaint",
       title: plan.title, message: plan.message, status: plan.update.status || data.status,
@@ -9150,12 +9466,10 @@ exports.advanceComplaintWorkflow = onCall({ region: REGION }, async (request) =>
     const response = { success: true, submissionId, newStatus: plan.update.status || data.status,
       workflowVersion: plan.update.workflowVersion, update: plan.update, event: plan.event };
     transaction.set(receiptRef, { actorId: actor.id, fingerprint, result: response, createdAt: now });
-    notify = { userIds: recipients, title: plan.title, body: plan.message };
+    if (recipients.length) queueWebNotification(transaction, { kind: "push", userIds: recipients,
+      title: plan.title, body: plan.message, type: "complaint_update", referenceId: submissionId });
     return response;
   });
-  if (notify?.userIds.length) {
-    try { await sendNormalPushToUsers(notify.userIds, { title: notify.title, body: notify.body, type: "complaint_update", referenceId: submissionId }); }
-    catch (error) { console.warn("Complaint push delivery failed:", error.code || "unknown"); }
-  }
+  console.info("[WEB_ACTION] Committed", { function: "advanceComplaintWorkflow", durationMs: Date.now() - started });
   return result;
 });

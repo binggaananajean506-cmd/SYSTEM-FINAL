@@ -7,7 +7,7 @@ import 'auth_service.dart';
 import 'core/validation/esugid_validators.dart';
 import 'forgot_password_screen.dart';
 import 'signup_screen.dart';
-import 'widgets/exit_confirmation_dialog.dart';
+import 'widgets/root_exit_pop_scope.dart';
 import 'widgets/auth_background.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -194,8 +194,8 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
         content: Text(
-          'You must be at least 13 years old to access E-Sugid. '
-          'This system is available to residents aged 13 and above.',
+          'You must be at least $minimumResidentAge years old to access E-Sugid. '
+          'This system is available to residents aged $minimumResidentAge and above.',
           style: GoogleFonts.poppins(
             color: context.colors.textPrimary,
             fontSize: 13,
@@ -268,15 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final shouldExit = await showExitConfirmationDialog(context);
-        if (shouldExit == true) {
-          await SystemNavigator.pop();
-        }
-      },
+    return RootExitPopScope(
       child: AuthBackground(
       title: 'Maayong pag-abot!',
       subtitle: 'Ang imong kasaligan nga kauban sa komunidad.',

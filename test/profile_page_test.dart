@@ -118,7 +118,14 @@ void main() {
     expect(find.text('Full name'), findsOneWidget);
     expect(find.text('Mobile number'), findsOneWidget);
     expect(find.text('Address / Purok'), findsOneWidget);
-    expect(find.textContaining('Verified barangay'), findsOneWidget);
+    expect(find.text('Barangay'), findsOneWidget);
+    expect(find.text('Email'), findsOneWidget);
+    expect(find.text('Birth date'), findsOneWidget);
+    expect(find.text('Barangay and email cannot be changed here.'),
+        findsOneWidget);
+    expect(find.textContaining('REGISTERED'), findsNothing);
+    expect(find.textContaining('Personal details registered'), findsNothing);
+    expect(find.textContaining('Age:'), findsNothing);
     expect(find.text('Role'), findsNothing);
     expect(find.text('Permissions'), findsNothing);
     expect(tester.takeException(), isNull);

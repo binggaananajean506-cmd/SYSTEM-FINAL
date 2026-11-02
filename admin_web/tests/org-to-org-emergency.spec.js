@@ -1,4 +1,5 @@
 const { test, expect } = require("@playwright/test");
+const { loadAdminSession } = require("./helpers/admin-session");
 
 test.describe("Org-to-Org Emergency Flow", () => {
   test("incoming emergency modal shows emergency type, sender, location, description, date/time and buttons", async ({ page }) => {
@@ -96,7 +97,11 @@ test.describe("Org-to-Org Emergency Flow", () => {
   });
 
   test("private org can send emergency to public org; public org does not send emergency to org", async ({ page }) => {
-    await page.goto("/");
+    await loadAdminSession(page, "organization");
+    await page.evaluate(() => window.navigateTo("emergency"));
+    await expect(page.locator("#emergencyFeatureHeader")).toBeHidden();
+    await expect(page.locator("#newAlertButton")).toBeHidden();
+    await expect(page.locator("#newDispatchButton")).toBeVisible();
     const source = await (await page.request.get("/")).text();
     const result = await page.evaluate((html) => {
       const doc = new DOMParser().parseFromString(html, "text/html");

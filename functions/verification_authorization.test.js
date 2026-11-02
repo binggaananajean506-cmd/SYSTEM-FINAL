@@ -11,7 +11,7 @@ const roles = ['barangay_captain', 'barangay_vice_captain', 'barangay_secretary'
 const canonicalRole = role => role === 'barangay' ? 'barangay_captain' : role;
 
 function officialCaller(actor, policy = {}) {
-  const start = source.indexOf('async function verificationOfficialCaller(request) {');
+  const start = source.indexOf('async function verificationOfficialCaller(');
   const end = source.indexOf('async function profilesForBarangay(', start);
   return vm.runInNewContext(`${source.slice(start, end)}; verificationOfficialCaller`, {
     activeUserCaller: async () => actor,

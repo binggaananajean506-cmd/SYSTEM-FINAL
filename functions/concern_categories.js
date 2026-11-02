@@ -87,6 +87,12 @@ function similarPublicConcern(proposed, existing, nowMs = Date.now()) {
 
 function publicConcernSummary(id, concern) {
   if (!concern || Number(concern.schemaVersion || 0) < 4 || concern.visibility !== "public") return null;
+  const originalReporterName = (concern.originalReporterName || concern.reporterName || concern.submitterName || (concern.residentName && concern.residentName !== "Resident" ? concern.residentName : "") || "Resident").toString().trim();
+  const originalReporterPhotoUrl = (concern.originalReporterPhotoUrl || concern.reporterPhotoUrl || concern.profilePhotoUrl || concern.photoUrl || "").toString().trim();
+  const rawReporters = Array.isArray(concern.reporters) ? concern.reporters : [];
+  const reporterNames = Array.isArray(concern.reporterNames) && concern.reporterNames.length
+    ? concern.reporterNames
+    : rawReporters.map(r => (r && (r.name || r.reporterName)) ? String(r.name || r.reporterName).trim() : null).filter(Boolean);
   return {
     id,
     schemaVersion: 4,
@@ -100,6 +106,12 @@ function publicConcernSummary(id, concern) {
     location: concern.location,
     status: concern.status,
     reporterCount: concern.reporterCount || 1,
+    originalReporterName: originalReporterName || "Resident",
+    originalReporterPhotoUrl,
+    reporterName: originalReporterName || "Resident",
+    reporterPhotoUrl: originalReporterPhotoUrl,
+    reporters: rawReporters,
+    reporterNames: reporterNames.length ? reporterNames : [originalReporterName || "Resident"],
     date: concern.date,
     latestReportAt: concern.latestReportAt || concern.date,
   };

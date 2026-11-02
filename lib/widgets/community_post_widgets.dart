@@ -18,6 +18,7 @@ import '../pages/public_entity_profile_page.dart';
 import '../pages/public_user_profile_page.dart';
 import '../services/publisher_avatar_service.dart';
 import 'dart:convert';
+import 'dart:async';
 
 String _relativePostTime(DateTime createdAt) {
   final difference = DateTime.now().difference(createdAt.toLocal());
@@ -68,8 +69,8 @@ Widget _heroFlightShuttle(
   );
 }
 
-/// Barangay offices use an office icon; other publishers retain their uploaded
-/// profile photos and branded fallback icons. Seals belong on official forms.
+/// Publisher photos follow the profile saved by the web admin. An office icon
+/// remains the fallback when no photo is available.
 class PublisherAvatar extends StatefulWidget {
   static bool isBarangayPublisher(CommunityPost post) =>
       post.publisherEntityType.trim().toLowerCase() == 'barangay' ||
@@ -109,6 +110,8 @@ class PublisherAvatar extends StatefulWidget {
 class _PublisherAvatarState extends State<PublisherAvatar> {
   String? _resolvedUrl;
   ValueNotifier<String?>? _activeNotifier;
+  StreamSubscription<String?>? _barangayPhotoSubscription;
+  int _resolutionGeneration = 0;
 
   bool get _isBarangayPublisher {
     final post = widget.post;
@@ -140,6 +143,9 @@ class _PublisherAvatarState extends State<PublisherAvatar> {
   void didUpdateWidget(covariant PublisherAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.photoUrl != widget.photoUrl ||
+        oldWidget.authorId != widget.authorId ||
+        oldWidget.organizationId != widget.organizationId ||
+        oldWidget.post?.authorId != widget.post?.authorId ||
         oldWidget.post?.id != widget.post?.id ||
         oldWidget.post?.authorPhotoUrl != widget.post?.authorPhotoUrl ||
         oldWidget.post?.publisherEntityId != widget.post?.publisherEntityId ||
@@ -153,10 +159,32 @@ class _PublisherAvatarState extends State<PublisherAvatar> {
   }
 
   void _checkAndResolve() {
+    final generation = ++_resolutionGeneration;
+    _barangayPhotoSubscription?.cancel();
+    _barangayPhotoSubscription = null;
+    _activeNotifier?.removeListener(_onNotifierChanged);
+    _activeNotifier = null;
+    _resolvedUrl = null;
     if (_isBarangayPublisher) {
-      _activeNotifier?.removeListener(_onNotifierChanged);
-      _activeNotifier = null;
-      _resolvedUrl = null;
+      final post = widget.post;
+      final name = widget.barangay ??
+          (post?.authorBarangay.trim().isNotEmpty == true
+              ? post!.authorBarangay : post?.publisherEntityName);
+      final id = PublisherAvatarService.barangayProfileId(
+        id: widget.barangayId ?? post?.publisherEntityId,
+        name: name,
+      );
+      _resolvedUrl = id == null ? null : PublisherAvatarService.getCached(id);
+      if (id != null) {
+        _activeNotifier = PublisherAvatarService.getNotifier(id);
+        _activeNotifier!.addListener(_onNotifierChanged);
+        _barangayPhotoSubscription = PublisherAvatarService.watchBarangayAvatar(
+          barangayId: id,
+        ).listen((photo) {
+          if (!mounted || generation != _resolutionGeneration) return;
+          setState(() => _resolvedUrl = photo);
+        });
+      }
       return;
     }
     final direct = _effectiveDirectUrl;
@@ -195,7 +223,7 @@ class _PublisherAvatarState extends State<PublisherAvatar> {
       authorId: authId,
       organizationId: orgId,
     ).then((resolved) {
-      if (mounted && resolved != null && resolved.isNotEmpty) {
+      if (mounted && generation == _resolutionGeneration && resolved != null && resolved.isNotEmpty) {
         setState(() {
           _resolvedUrl = resolved;
         });
@@ -213,6 +241,8 @@ class _PublisherAvatarState extends State<PublisherAvatar> {
 
   @override
   void dispose() {
+    _resolutionGeneration++;
+    _barangayPhotoSubscription?.cancel();
     _activeNotifier?.removeListener(_onNotifierChanged);
     super.dispose();
   }
@@ -306,7 +336,7 @@ class _PublisherAvatarState extends State<PublisherAvatar> {
             ],
           ),
           child: ClipOval(
-            child: _isBarangayPublisher || !hasUrl
+            child: !hasUrl
                 ? _buildFallback()
                 : _buildImage(url),
           ),
@@ -763,26 +793,14 @@ class ModernPostCard extends StatelessWidget {
   ) {
     Navigator.push(
       context,
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: context.colors.shadow.withValues(alpha: 0.50),
-        transitionDuration: const Duration(milliseconds: 360),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            PostDetailsPage(
-              post: post,
-              imageHeroTag: imageHeroTag,
-              primaryGreen: context.colors.primaryGreen,
-              deepGreen: context.colors.textPrimary,
-            ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeInOutCubic,
-            reverseCurve: Curves.easeInOutCubic,
-          );
-          return FadeTransition(opacity: curved, child: child);
-        },
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: '/post-details/${post.id}'),
+        builder: (context) => PostDetailsPage(
+          post: post,
+          imageHeroTag: imageHeroTag,
+          primaryGreen: context.colors.primaryGreen,
+          deepGreen: context.colors.textPrimary,
+        ),
       ),
     );
   }

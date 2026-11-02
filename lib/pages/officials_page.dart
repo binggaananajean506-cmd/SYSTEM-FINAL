@@ -88,11 +88,11 @@ class OfficialsPage extends StatelessWidget {
         'image': 'assets/images/resident_dashboard/teresito.png',
       },
       {
-        'name': 'NELSON P. RICAMORA',
+        'name': 'Nelson G. Gingoyon',
         'image': 'assets/images/resident_dashboard/nelson.png',
       },
       {
-        'name': 'ANDRES "DRES" G. ABELLANA',
+        'name': 'Andres C. Alpas',
         'image': 'assets/images/resident_dashboard/andres.png',
       },
     ];

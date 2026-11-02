@@ -138,4 +138,34 @@ void main() {
     expect(find.text('26'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('signup requires age 15 and accepts the exact birthday boundary', (
+    WidgetTester tester,
+  ) async {
+    usePhoneSize(tester);
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const MaterialApp(home: SignupScreen()));
+    await tester.pumpAndSettle();
+    final dob = find.byKey(const ValueKey('signup-dob-field'));
+    await tester.scrollUntilVisible(
+      dob,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final today = DateTime.now();
+    String birthday(DateTime date) =>
+        '${date.month.toString().padLeft(2, '0')}'
+        '${date.day.toString().padLeft(2, '0')}${date.year}';
+    final fifteenthBirthday = DateTime(today.year - 15, today.month, today.day);
+    await tester.enterText(
+      dob,
+      birthday(fifteenthBirthday.add(const Duration(days: 1))),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Must be at least 15 years old to sign up.'), findsOneWidget);
+    await tester.enterText(dob, birthday(fifteenthBirthday));
+    await tester.pumpAndSettle();
+    expect(find.text('Must be at least 15 years old to sign up.'), findsNothing);
+    expect(find.text('15'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

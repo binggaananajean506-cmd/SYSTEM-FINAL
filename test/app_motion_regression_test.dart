@@ -107,7 +107,7 @@ void main() {
           2,
           (index) => Builder(
             builder: (context) {
-            tickerModes[index] = TickerMode.valuesOf(context).enabled;
+            tickerModes[index] = TickerMode.of(context);
               return TextField(key: ValueKey('field-$index'));
             },
           ),

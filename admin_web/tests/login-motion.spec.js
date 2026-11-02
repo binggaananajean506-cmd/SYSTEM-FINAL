@@ -30,6 +30,7 @@ test('logo floats gently, welcome settles once, and sign-in hover gives subtle f
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
   const greeting = page.locator('#authHeadingGreeting');
+  await expect(greeting).toHaveText('Maayong Adlaw!');
   await expect(greeting).toHaveCSS('animation-name', 'civic-welcome-reveal');
   await expect(greeting).toHaveCSS('animation-iteration-count', '1');
   await expect(greeting).toHaveCSS('opacity', '1');

@@ -6,14 +6,7 @@ import '../../submission_service.dart';
 import 'complaint_modals.dart';
 import 'complaint_role_helper.dart';
 
-/// Redesigned resident-facing Complaint Tracking View.
-///
-/// Prioritizes:
-/// 1. Current Status & Next Step
-/// 2. Date, Time, Place
-/// 3. Handled by: dynamic ROLE (not person name)
-/// 4. "What you need to do" action items
-/// 5. Clean touch targets for [View Summons] and [View Full History]
+/// A short case overview with detailed records available on demand.
 class ComplaintTrackingView extends StatelessWidget {
   const ComplaintTrackingView({
     super.key,
@@ -50,16 +43,36 @@ class ComplaintTrackingView extends StatelessWidget {
         complaint.settlement?['agreementTerms']?.toString() ??
         complaint.unsettledRecord?['remarks']?.toString() ??
         historyReason;
+    final workflowStatus = complaint.complaintWorkflowStatus;
+    final needsInformation = const {'needs_information', 'awaiting_resident'}
+        .contains(workflowStatus);
+    final nextStep = _nextStepMessage(
+      workflowStatus: workflowStatus,
+      needsInformation: needsInformation,
+      isHearingScheduled: isHearingScheduled,
+    );
+    final hearingDate = ComplaintRoleHelper.formatFriendlyDate(
+      hearing?['date'] ?? oldSchedule?['date'] ?? oldSchedule?['appearanceDate'],
+    );
+    final hearingTime = ComplaintRoleHelper.formatFriendlyTime(
+      hearing?['time'] ?? oldSchedule?['time'] ?? oldSchedule?['appearanceTime'],
+    );
+    final hearingPlace = (hearing?['venue'] ?? oldSchedule?['venue'] ??
+            oldSchedule?['appearanceVenue'])
+        ?.toString()
+        .trim();
+    final hearingSummary = [
+      if (hearingDate != 'Date pending') hearingDate,
+      if (hearingTime.isNotEmpty) hearingTime,
+      if (hearingPlace?.isNotEmpty == true) hearingPlace!,
+    ].join(' · ');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ---------------------------------------------------------------
-        // Respondent Card (Compact & Clear)
-        // ---------------------------------------------------------------
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: colors.surface,
             borderRadius: BorderRadius.circular(14),
@@ -69,80 +82,147 @@ class ComplaintTrackingView extends StatelessWidget {
                   : colors.border,
             ),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.person_outline_rounded,
-                size: 18,
-                color: colors.primaryGreen,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Respondent: ',
-                style: GoogleFonts.outfit(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textSecondary,
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  complaint.respondentDisplayName,
+              Text('Current status', style: GoogleFonts.outfit(
+                fontSize: 12, fontWeight: FontWeight.w700,
+                color: colors.textSecondary,
+              )),
+              const SizedBox(height: 4),
+              Text(complaint.complaintStatusLabel, style: GoogleFonts.outfit(
+                fontSize: 19, fontWeight: FontWeight.w800,
+                color: colors.textPrimary,
+              )),
+              const SizedBox(height: 6),
+              Text('Respondent: ${complaint.respondentDisplayName}',
                   style: GoogleFonts.outfit(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 12, color: colors.textSecondary,
+                  )),
+              if (!complaint.complaintFinished &&
+                  isHearingScheduled &&
+                  complaint.complaintStatusLabel != 'Result Pending' &&
+                  hearingSummary.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  hearingSummary,
+                  style: GoogleFonts.outfit(
+                    fontSize: 12, fontWeight: FontWeight.w600,
                     color: colors.textPrimary,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
+              ],
+              if (complaint.summons?['deliveryStatus'] == 'handed_to_tanod') ...[
+                const SizedBox(height: 8),
+                Text('Summons with the tanod. Delivery is not yet confirmed.',
+                    style: GoogleFonts.outfit(
+                      fontSize: 11.5, color: colors.textSecondary,
+                    )),
+              ],
+              if (isHearingScheduled || hasSummons) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => showSummonsSheet(context, complaint),
+                    icon: const Icon(Icons.description_outlined, size: 17),
+                    label: const Text(
+                      'View Summons Issued to Respondent',
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-        const SizedBox(height: 14),
-
-        // ---------------------------------------------------------------
-        // 1. NEXT STEP CARD (Priorities 2, 3, 4, 5: Date, Time, Place, Handled by)
-        // ---------------------------------------------------------------
-        _buildNextStepCard(
-          context,
-          colors: colors,
-          isDark: isDark,
-          hearing: hearing,
-          legacy: legacy,
-          oldSchedule: oldSchedule,
-          hasSummons: hasSummons,
-          isHearingScheduled: isHearingScheduled,
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: needsInformation ? colors.warningSurface : colors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: colors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Next step', style: GoogleFonts.outfit(
+                fontSize: 12, fontWeight: FontWeight.w700,
+                color: colors.textSecondary,
+              )),
+              const SizedBox(height: 5),
+              Text(nextStep, style: GoogleFonts.outfit(
+                fontSize: 13, color: colors.textPrimary, height: 1.4,
+              )),
+              if (needsInformation && onResubmit != null) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  key: const ValueKey('complaint-resubmit'),
+                  onPressed: onResubmit,
+                  icon: const Icon(Icons.edit_note_rounded, size: 18),
+                  label: const Text('Update complaint'),
+                ),
+              ],
+            ],
+          ),
         ),
-        const SizedBox(height: 16),
-
-        // ---------------------------------------------------------------
-        // 2. "WHAT YOU NEED TO DO" SECTION (Priority 6)
-        // ---------------------------------------------------------------
-        _buildWhatYouNeedToDoCard(
-          context,
-          colors: colors,
-          isDark: isDark,
-          isHearingScheduled: isHearingScheduled,
-          hearing: hearing,
-          oldSchedule: oldSchedule,
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: colors.border),
+          ),
+          child: ExpansionTile(
+            title: Text('Case details', style: GoogleFonts.outfit(
+              fontSize: 14, fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
+            )),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+            children: [
+              _buildNextStepCard(
+                context,
+                colors: colors,
+                isDark: isDark,
+                hearing: hearing,
+                legacy: legacy,
+                oldSchedule: oldSchedule,
+                hasSummons: hasSummons,
+                isHearingScheduled: isHearingScheduled,
+              ),
+              if (!needsInformation) ...[
+                const SizedBox(height: 12),
+                _buildWhatYouNeedToDoCard(
+                  context,
+                  colors: colors,
+                  isDark: isDark,
+                  isHearingScheduled: isHearingScheduled,
+                  hearing: hearing,
+                  oldSchedule: oldSchedule,
+                ),
+              ],
+              if (complaint.complaintFinished && conclusion?.isNotEmpty == true) ...[
+                const SizedBox(height: 12),
+                _buildConclusionCard(context, colors: colors, conclusion: conclusion!),
+              ],
+              if (hasSummons || complaint.hearings.isNotEmpty || complaint.externalUpdates.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildRecordsSummaryCard(context, colors: colors),
+              ],
+              if (!hasSummons && complaint.hearings.isEmpty && complaint.externalUpdates.isEmpty) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => showFullHistorySheet(context, complaint),
+                  icon: const Icon(Icons.history_rounded, size: 17),
+                  label: const Text('View full history'),
+                ),
+              ],
+            ],
+          ),
         ),
-
-        // ---------------------------------------------------------------
-        // 3. CASE CONCLUSION / RESOLUTION SUMMARY (If finished)
-        // ---------------------------------------------------------------
-        if (complaint.complaintFinished && conclusion?.isNotEmpty == true) ...[
-          const SizedBox(height: 16),
-          _buildConclusionCard(context, colors: colors, conclusion: conclusion!),
-        ],
-
-        // ---------------------------------------------------------------
-        // 4. SUMMARY LOGS (Attendance, Updates & Delivery Confirmation)
-        // ---------------------------------------------------------------
-        if (hasSummons || complaint.hearings.isNotEmpty || complaint.externalUpdates.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          _buildRecordsSummaryCard(context, colors: colors),
-        ],
       ],
     );
   }
@@ -159,11 +239,13 @@ class ComplaintTrackingView extends StatelessWidget {
     required bool isHearingScheduled,
   }) {
     // Dynamic Role Resolution - Always ROLE, never person name!
-    final dynamicRole = ComplaintRoleHelper.resolveRole(
+    final dynamicRole = isLuponRound(hearing?['number'] ?? complaint.summons?['hearingNumber'] ?? complaint.completedHearingCount + 1)
+        ? 'Barangay Lupon'
+        : ComplaintRoleHelper.resolveRole(
       actorId: hearing?['officerId']?.toString() ??
           complaint.summons?['issuedBy']?.toString(),
       actorRole: hearing?['officerRole']?.toString() ??
-          complaint.summons?['actorRole']?.toString(),
+          complaint.summons?['actorRole']?.toString() ?? 'barangay_captain',
       actorName: hearing?['officerName']?.toString() ??
           complaint.summons?['assignedTanod']?.toString(),
       action: isHearingScheduled ? 'schedule' : complaint.status,
@@ -246,16 +328,17 @@ class ComplaintTrackingView extends StatelessWidget {
                   ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
               if (!complaint.complaintFinished && !legacy && hearing != null)
-                Text(
-                  'Hearing ${hearing['number'] ?? 1} of 3',
+                Expanded(child: Text(
+                  complaintHearingLabel(hearing['number']),
+                  textAlign: TextAlign.end,
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     color: colors.textSecondary,
                     fontWeight: FontWeight.w600,
                   ),
-                ),
+                )),
             ],
           ),
           const SizedBox(height: 12),
@@ -313,36 +396,6 @@ class ComplaintTrackingView extends StatelessWidget {
             _detailRow('Handled by', dynamicRole, colors, highlight: true),
           ],
 
-          // View Summons Button (for hearing or issued summons)
-          if (isHearingScheduled || hasSummons) ...[
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton.icon(
-                onPressed: () => showSummonsSheet(context, complaint),
-                icon: const Icon(Icons.description_outlined, size: 19),
-                label: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'View Summons Issued to Respondent',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: colors.primaryGreen,
-                  foregroundColor: colors.onAccent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -468,14 +521,14 @@ class ComplaintTrackingView extends StatelessWidget {
                   size: 20,
                 ),
                 const SizedBox(width: 8),
-                Text(
+                Expanded(child: Text(
                   'What you need to do',
                   style: GoogleFonts.outfit(
                     color: colors.textPrimary,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
-                ),
+                )),
               ],
             ),
             const SizedBox(height: 12),
@@ -529,7 +582,9 @@ class ComplaintTrackingView extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'This case is closed. No further action is required from you.',
+              complaint.closureOutcome == 'cfa_issued' || complaint.status == 'cfa_issued'
+                  ? 'The CFA has been issued. Contact the barangay office for your copy.'
+                  : 'This case is closed. No further action is required from you.',
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 color: colors.textSecondary,
@@ -569,7 +624,11 @@ class ComplaintTrackingView extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'No action is needed right now. The barangay is reviewing your complaint and will update your case status here.',
+            status == 'awaiting_cfa'
+                ? 'All six rounds are recorded without settlement. The barangay office will review and issue the CFA.'
+                : complaint.completedHearingCount == 3
+                ? 'The three barangay rounds are complete. Wait for your lupon conciliation schedule.'
+                : 'No action is needed right now. The barangay will update your case status here.',
             style: GoogleFonts.poppins(
               fontSize: 12,
               color: colors.textSecondary,
@@ -651,14 +710,14 @@ class ComplaintTrackingView extends StatelessWidget {
             children: [
               Icon(Icons.feed_outlined, size: 18, color: colors.primaryGreen),
               const SizedBox(width: 8),
-              Text(
+              Expanded(child: Text(
                 'Case Records & Updates',
                 style: GoogleFonts.outfit(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w800,
                   color: colors.textPrimary,
                 ),
-              ),
+              )),
             ],
           ),
           const SizedBox(height: 10),
@@ -696,7 +755,7 @@ class ComplaintTrackingView extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                'Hearing ${session['number']} · ${_hearingOutcomeLabel(session)}',
+                '${complaintHearingLabel(session['number'])} · ${_hearingOutcomeLabel(session)}',
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -827,6 +886,7 @@ class ComplaintTrackingView extends StatelessWidget {
         'under_review' => 'Under review by the barangay.',
         'needs_information' => 'More information is needed.',
         'awaiting_next_schedule' => 'Waiting for next hearing schedule.',
+        'awaiting_cfa' => 'Awaiting CFA issuance.',
         'hearing_scheduled' => 'Your hearing is scheduled.',
         'filed' => 'Complaint filed.',
         _ => 'Case in progress.',
@@ -848,6 +908,33 @@ class ComplaintTrackingView extends StatelessWidget {
           orElse: () =>
               'The barangay needs additional details to continue reviewing your complaint.',
         );
+  }
+
+  String _nextStepMessage({
+    required String workflowStatus,
+    required bool needsInformation,
+    required bool isHearingScheduled,
+  }) {
+    if (needsInformation) return _extractReason(complaint);
+    if (complaint.complaintFinished) {
+      return complaint.closureOutcome == 'cfa_issued' ||
+              complaint.status == 'cfa_issued'
+          ? 'Contact the barangay for your CFA copy.'
+          : 'No further action is needed.';
+    }
+    if (complaint.complaintStatusLabel == 'Result Pending') {
+      return 'Wait for the hearing result.';
+    }
+    if (isHearingScheduled) {
+      return 'Attend your hearing. Bring your ID and evidence.';
+    }
+    if (workflowStatus == 'awaiting_cfa') {
+      return 'Wait for the barangay to issue your CFA.';
+    }
+    if (complaint.completedHearingCount == 3) {
+      return 'Wait for your next hearing schedule.';
+    }
+    return 'No action needed. Check back for updates.';
   }
 
   String _hearingOutcomeLabel(Map<String, dynamic> session) =>

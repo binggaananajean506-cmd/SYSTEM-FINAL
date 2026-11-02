@@ -200,6 +200,8 @@ body:has(#login-screen:not([hidden])) {
 }
 #login-screen.auth-layout .auth-card,
 #login-screen.auth-layout .auth-card:hover {
+  position: relative;
+  overflow: visible !important;
   display: block;
   width: 100% !important;
   max-width: 380px !important;
@@ -215,6 +217,27 @@ body:has(#login-screen:not([hidden])) {
   transition: none;
   will-change: auto;
 }
+#login-screen .auth-back-home {
+  position: absolute;
+  z-index: 2;
+  top: -26px;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  width: fit-content;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--textSecondary);
+  background: var(--surface);
+  font: 600 12px/1.4 'Manrope', system-ui, sans-serif;
+  text-decoration: none;
+}
+#login-screen .auth-back-home:hover { color: var(--primaryGreen); background: var(--hover); }
+#login-screen .auth-back-home:focus-visible { outline: 3px solid var(--primaryGreen); outline-offset: 3px; }
 #login-screen.auth-layout .auth-card-top { margin-bottom: 32px; }
 #login-screen.auth-layout .auth-card-header-flex { display: block; }
 #login-screen.auth-layout .auth-card-title-group { gap: 15px; }

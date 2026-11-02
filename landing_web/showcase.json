@@ -1,0 +1,13 @@
+[
+  {"id":"home","file":"home-dashboard.jpg","width":1080,"height":2460,"title":"Home dashboard","description":"Your barangay, local announcements, and weather at a glance."},
+  {"id":"updates","file":"community-updates.jpg","width":1080,"height":2460,"title":"Community Updates","description":"News and announcements from your community and local offices."},
+  {"id":"reports","file":"report-center.jpg","width":1080,"height":2460,"title":"Report Center","description":"Speak up, file a report, and follow your activity."},
+  {"id":"services","file":"barili-services.jpg","width":1080,"height":2460,"title":"Barili Services","description":"Community services and useful town information, together."},
+  {"id":"alerts","file":"emergency-alert.jpg","width":1080,"height":2460,"title":"Emergency alerts","description":"See important emergency advisories as they arrive."},
+  {"id":"hotlines","file":"emergency-hotlines.jpg","width":900,"height":2050,"title":"Emergency Hotlines","description":"Find local response organizations and contact options."},
+  {"id":"bayanihan","file":"bayanihan-works.jpg","width":1080,"height":2460,"title":"Bayanihan Works","description":"Lend a hand or find support from your community."},
+  {"id":"market","file":"local-market.jpg","width":1080,"height":2460,"title":"Local Market","description":"Discover local goods and what your neighbors have to offer."},
+  {"id":"assistant","file":"esugid-assistant.jpg","width":1080,"height":2460,"title":"E-SUGID Assistant","description":"A little guidance when you need help finding your way."},
+  {"id":"game","file":"carabao-runner.jpg","width":1080,"height":2460,"title":"Carabao Runner","description":"Take a break with a run through the Barili countryside."},
+  {"id":"profile","file":"resident-profile.jpg","width":1080,"height":2460,"title":"Resident profile","description":"Your personal information, security, and preferences."}
+]

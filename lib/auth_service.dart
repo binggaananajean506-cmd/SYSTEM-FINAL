@@ -12,6 +12,8 @@ import 'features/verification/domain/residency_verification.dart';
 import 'firestore_converters.dart';
 import 'signup_draft.dart';
 
+const minimumResidentAge = 15;
+
 enum UserRole { resident, lgu, partner, barangay }
 
 enum AccountStatus { active, pendingApproval, suspended, disabled }
@@ -534,7 +536,7 @@ enum LoginFailureType {
   network,
   general,
 
-  /// The account exists and credentials are correct, but the user is under 13.
+  /// Credentials are correct, but the resident is below the minimum age.
   underageAccount,
 }
 
@@ -875,7 +877,7 @@ class AuthService {
             }
           }
 
-          // ── Age gate: block residents who are under 13 ──────────────────
+          // Keep the resident age gate consistent with signup eligibility.
           final rawBirthDate = currentUser?.birthDate;
           if (rawBirthDate != null && rawBirthDate.isNotEmpty) {
             try {
@@ -887,7 +889,7 @@ class AuthService {
                       birthDate.day > today.day)) {
                 age--;
               }
-              if (age < 13) {
+              if (age < minimumResidentAge) {
                 currentUser = null;
                 await _auth.signOut();
                 return const LoginResult.failure(
@@ -1092,7 +1094,7 @@ class AuthService {
     try {
       final result = await _functions
           .httpsCallable('beginResidentSignup')
-          .call<Object?>({'email': details['email']})
+          .call<Object?>({'email': details['email'], 'name': details['name']})
           .timeout(const Duration(seconds: 45));
       final data = Map<String, dynamic>.from(result.data as Map);
       final sessionId = data['sessionId']?.toString();
@@ -1147,7 +1149,7 @@ class AuthService {
     if (pending != null) {
       final result = await _functions
           .httpsCallable('beginResidentSignup')
-          .call<Object?>({'email': pending['email']});
+          .call<Object?>({'email': pending['email'], 'name': pending['name']});
       final data = Map<String, dynamic>.from(result.data as Map);
       _pendingSignup = {...pending, 'sessionId': data['sessionId']};
       return _pendingSignupStatus = _otpStatus(data);

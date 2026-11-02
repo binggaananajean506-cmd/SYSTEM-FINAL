@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'services/announcement_image_cache.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:esugid/app_motion.dart';
 import 'package:flutter/scheduler.dart';
@@ -34,7 +33,7 @@ import 'emergency_alert_service.dart';
 import 'submission_service.dart';
 import 'pending_approval_screen.dart';
 import 'verification_screen.dart';
-import 'widgets/exit_confirmation_dialog.dart';
+import 'widgets/root_exit_pop_scope.dart';
 import 'widgets/community_post_widgets.dart';
 import 'widgets/home_header_status_bar.dart';
 import 'widgets/user_profile_avatar.dart';
@@ -975,8 +974,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ? _buildUpdatesPage(user)
                     : const SizedBox.shrink(),
                 _visitedPageIndexes.contains(2)
-                    ? ConcernCenterPage(
-                        onOpenAlerts: () => _openAlertsModal(user),
+                    ? ValueListenableBuilder<int>(
+                        valueListenable: _selectedPageIndex,
+                        builder: (context, selectedIndex, _) => ConcernCenterPage(
+                          onOpenAlerts: () => _openAlertsModal(user),
+                          onRootBack: () => _selectPage(0),
+                          isActiveRootTab: selectedIndex == 2,
+                        ),
                       )
                     : const SizedBox.shrink(),
                 _visitedPageIndexes.contains(3)
@@ -987,18 +991,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     : const SizedBox.shrink(),
               ];
 
-        return PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, result) async {
-            if (didPop) return;
-            if (_selectedPageIndex.value != 0) {
-              _selectPage(0);
-              return;
-            }
-            final shouldExit = await showExitConfirmationDialog(context);
-            if (shouldExit == true) {
-              await SystemNavigator.pop();
-            }
+        return RootExitPopScope(
+          onRootBack: () {
+            if (_selectedPageIndex.value == 2) return true;
+            if (_selectedPageIndex.value == 0) return false;
+            _selectPage(0);
+            return true;
           },
           child: Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -1108,7 +1106,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: ESugidPullToRefresh(
         onRefresh: _refreshHomePage,
         child: CustomScrollView(
-          scrollCacheExtent: const ScrollCacheExtent.pixels(420),
+          cacheExtent: 420,
           physics: const AlwaysScrollableScrollPhysics(
             parent: ClampingScrollPhysics(),
           ),
@@ -1622,7 +1620,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     parent: ClampingScrollPhysics(),
                   ),
                   padding: const EdgeInsets.fromLTRB(16, 18, 16, 135),
-                  scrollCacheExtent: const ScrollCacheExtent.pixels(720),
+                  cacheExtent: 720,
                   itemCount: posts.length,
                   itemBuilder: (context, index) => ModernPostCard(
                     post: posts[index],

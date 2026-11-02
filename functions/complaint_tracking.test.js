@@ -110,23 +110,30 @@ test("results require the scheduled start, attendance, outcome and conclusion", 
   assert.equal(next.schedule, null);
   assert.equal(completedHearings(next), 1);
 });
-test("three completed hearings close unsettled without legal document issuance or a fourth hearing", () => {
+test("three barangay rounds advance to three lupon rounds, then require separate CFA issuance", () => {
   let data = scheduled();
-  for (let number = 1; number <= 3; number++) {
+  for (let number = 1; number <= 6; number++) {
     assert.equal(activeHearing(data).number, number);
+    assert.equal(activeHearing(data).phase, number <= 3 ? "barangay" : "lupon");
+    assert.equal(activeHearing(data).phaseNumber, ((number - 1) % 3) + 1);
+    assert.throws(() => step(data, "issue_cfa", { reason: "Unresolved case", confirmEligibility: true }), /six|6/i);
     data = step(data, "record_result", result(), new Date(`2026-10-${9 + number}T01:00:00Z`));
-    if (number < 3) data = step(data, "schedule_hearing", { date: `2026-10-${10 + number}`, time: "09:00", venue: "Hall" }, new Date(`2026-10-${9 + number}T02:00:00Z`));
+    if (number === 3) assert.equal(data.status, "awaiting_next_schedule");
+    if (number < 6) data = step(data, "schedule_hearing", { date: `2026-10-${10 + number}`, time: "09:00", venue: "Hall" }, new Date(`2026-10-${9 + number}T02:00:00Z`));
   }
-  assert.equal(data.status, "closed");
-  assert.equal(data.closureOutcome, "unsettled");
-  assert.equal(completedHearings(data), 3);
-  assert.equal(data.hearings[2].status, "completed");
+  assert.equal(data.status, "awaiting_cfa");
+  assert.equal(completedHearings(data), 6);
   assert.equal(data.issuedCfa, undefined);
-  assert.equal(data.unsettledRecord, undefined);
-  assert.throws(() => step(data, "schedule_hearing", { date: "2026-10-14", time: "09:00", venue: "Hall" }), /finished/);
+  assert.throws(() => step(data, "schedule_hearing", { date: "2026-10-17", time: "09:00", venue: "Hall" }), /not ready/);
+  assert.throws(() => step(data, "issue_cfa", { reason: "No agreement after all six rounds." }), /confirm/i);
+  const issued = step(data, "issue_cfa", { cfaForm: "20-A", reason: "No agreement after all six rounds.", confirmEligibility: true });
+  assert.equal(issued.status, "closed");
+  assert.equal(issued.closureOutcome, "cfa_issued");
+  assert.ok(issued.cfaIssuedAt);
+  assert.throws(() => step(issued, "issue_cfa", { reason: "Duplicate", confirmEligibility: true }), /finished/);
 });
 test("agreement at any hearing leaves its completed hearing intact", () => {
-  for (let number = 1; number <= 3; number++) {
+  for (let number = 1; number <= 6; number++) {
     const data = { ...scheduled(), legacyCompletedHearings: number - 1 };
     data.hearings[0].number = number;
     const finished = step(data, "record_result", result("settled"), start);
@@ -172,9 +179,38 @@ test("ambiguous legacy schedules require confirmation; summons count is never he
   assert.equal(confirmed.status, "awaiting_next_schedule");
   assert.equal(requiresTrackingConfirmation(confirmed), false);
   assert.equal(confirmed.legacyTrackingSnapshot.summons.summonsCount, 3);
-  const closed = step(old, "confirm_tracking", { completedHearings: 3, outcome: "unsettled", summary: "Final hearing ended without agreement.", reason: "Confirmed three completed hearings in the logbook." });
-  assert.equal(closed.closureOutcome, "unsettled");
-  assert.equal(completedHearings(closed), 3);
+  const third = step(old, "confirm_tracking", { completedHearings: 3, reason: "Confirmed three barangay hearings in the logbook." });
+  assert.equal(third.status, "awaiting_next_schedule");
+  const sixth = step(old, "confirm_tracking", { completedHearings: 6, outcome: "unsettled", summary: "All six rounds ended without agreement.", reason: "Confirmed three barangay and three lupon hearings in the logbook." });
+  assert.equal(sixth.status, "awaiting_cfa");
+  assert.equal(completedHearings(sixth), 6);
+});
+
+test("recorded non-attendance advances rounds only after their start and never creates an early CFA", () => {
+  let data = scheduled();
+  const fields = { reason: "Respondent absent despite the summons.", complainantAttendance: "present", respondentAttendance: "absent" };
+  assert.throws(() => step(data, "record_nonattendance", fields, before), /scheduled start/);
+  assert.throws(() => step(data, "schedule_another_hearing", { ...fields, date: "2026-10-11", time: "09:00", venue: "Hall" }, before), /scheduled start/);
+  for (let number = 1; number <= 6; number++) {
+    data = step(data, "record_nonattendance", fields, new Date(`2026-10-${9 + number}T01:00:00Z`));
+    if (number < 6) data = step(data, "schedule_another_hearing", { date: `2026-10-${10 + number}`, time: "09:00", venue: "Hall" }, new Date(`2026-10-${9 + number}T02:00:00Z`));
+  }
+  assert.equal(data.status, "awaiting_cfa");
+  assert.equal(completedHearings(data), 6);
+  assert.equal(data.cfaIssuedAt, undefined);
+  assert.throws(() => step(data, "schedule_another_hearing", {}), /6/);
+});
+
+test("lupon summons numbers are derived from the hearing, not client input or regenerated copies", () => {
+  const data = { ...scheduled(), legacyCompletedHearings: 3 };
+  data.hearings[0].number = 4;
+  const issued = step(data, "issue_summons", { ...summonsFields(), summonsCount: 6 });
+  assert.equal(issued.summons.summonsCount, 4);
+  assert.equal(issued.summons.phase, "lupon");
+  assert.equal(issued.summons.phaseNumber, 1);
+  const reissued = step(issued, "issue_summons", summonsFields());
+  assert.equal(reissued.summons.summonsCount, 4);
+  assert.equal(completedHearings(reissued), 3);
 });
 test("external notes cannot accidentally confirm a legacy position", () => {
   const old = { kind: "complaint", status: "mediation", schedule: { date: "old date" } };

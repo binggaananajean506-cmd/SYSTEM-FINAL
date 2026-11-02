@@ -4032,41 +4032,6 @@ class _MarketplacePageState extends State<MarketplacePage> {
             ],
           ),
 
-          const SizedBox(height: 12),
-
-          // Inset Contact Line Banner
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: context.colors.border),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  size: 15,
-                  color: context.colors.primaryGreen,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    item.contact.trim().isNotEmpty
-                        ? 'Contact: ${item.contact.trim()}'
-                        : 'Contact: In-app E-SUGID messaging',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.outfit(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: context.colors.primaryGreen,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );

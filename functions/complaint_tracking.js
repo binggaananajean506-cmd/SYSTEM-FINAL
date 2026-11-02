@@ -2,6 +2,18 @@
 
 // Tracking and the existing summons form. Physical service and legal eligibility stay offline.
 const { isComplaint } = require("./complaint_helpers");
+const { manualTanodName } = require("./summons_officials");
+const { cfaOptions } = require("./cfa_forms");
+const HEARINGS_PER_PHASE = 3;
+const MAX_HEARINGS = HEARINGS_PER_PHASE * 2;
+function hearingPhase(number) {
+  return { phase: number > HEARINGS_PER_PHASE ? "lupon" : "barangay",
+    phaseNumber: ((number - 1) % HEARINGS_PER_PHASE) + 1 };
+}
+function hearingLabel(number) {
+  const { phase, phaseNumber } = hearingPhase(number);
+  return `${phase === "lupon" ? "Lupon" : "Barangay"} Hearing ${phaseNumber} of ${HEARINGS_PER_PHASE} · Round ${number} of ${MAX_HEARINGS}`;
+}
 const TERMINAL = new Set(["resolved", "closed", "settled", "unsettled", "invalid", "withdrawn", "dismissed", "rejected", "cfa_issued"]);
 const ACTION_LABELS = Object.freeze({
   review: "Under Review", request_information: "More Information Requested",
@@ -11,6 +23,8 @@ const ACTION_LABELS = Object.freeze({
   record_external_update: "External Update Recorded", confirm_tracking: "Previous Tracking Position Confirmed",
   issue_summons: "Official Summons Issued", notify_summons: "Summons Notice Sent",
   issue_cfa: "Certificate to File Action Issued", schedule_another_hearing: "Next Hearing Scheduled",
+  record_nonattendance: "Non-attendance Recorded",
+  notify_cfa: "CFA notice sent",
 });
 function fail(message, code = "failed-precondition") {
   const error = new Error(message);
@@ -68,7 +82,7 @@ function schedule(input, number, now, actor, operationId, allowPast = false) {
   const time = input.time;
   if (!validDate(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time || "")) fail("Choose a valid date and time.", "invalid-argument");
   const result = {
-    id: operationId, number, date, time, venue: text(input.venue, "Venue", true, 160),
+    id: operationId, number, ...hearingPhase(number), date, time, venue: text(input.venue, "Venue", true, 160),
     officerName: text(input.officerName, "Assigned official", false, 160),
     notes: text(input.notes, "Schedule notes", false), status: "scheduled",
     scheduledAt: now.toISOString(), scheduledBy: actor.id, scheduledByName: actor.name,
@@ -83,7 +97,7 @@ function planTrackingUpdate(data, input, now, actor) {
   const current = trackingStatus(data);
   const action = input.action;
   const finished = TERMINAL.has(current);
-  if (finished && action !== "record_external_update") fail("This complaint is already finished.");
+  if (finished && !["record_external_update", "notify_cfa"].includes(action)) fail("This complaint is already finished.");
   if (requiresTrackingConfirmation(data) && !["confirm_tracking", "record_external_update"].includes(action)) {
     fail("Confirm the previous hearing position before updating this legacy complaint.");
   }
@@ -108,6 +122,21 @@ function planTrackingUpdate(data, input, now, actor) {
       active.cancelledAt = now.toISOString();
     }
   };
+  const requireStarted = () => {
+    if (!active || now < startTime(active)) fail("Record an attempt only after its scheduled start.");
+  };
+  const recordAbsence = () => {
+    requireStarted();
+    const attendance = [input.complainantAttendance, input.respondentAttendance];
+    if (!attendance.every((value) => ["present", "absent"].includes(value)) || !attendance.includes("absent")) {
+      fail("Record actual attendance for both parties, including the absent party.", "invalid-argument");
+    }
+    const summary = text(input.reason || input.previousHearingNote, "Non-attendance notes");
+    Object.assign(active, { status: "completed", ...hearingPhase(active.number), outcome: "no_agreement", summary,
+      complainantAttendance: input.complainantAttendance, respondentAttendance: input.respondentAttendance,
+      recordedAt: now.toISOString(), recordedBy: actor.id });
+    return summary;
+  };
   switch (action) {
     case "review":
       if (current !== "filed") fail("Only a filed complaint can start review.");
@@ -130,15 +159,17 @@ function planTrackingUpdate(data, input, now, actor) {
     case "confirm_tracking": {
       if (!requiresTrackingConfirmation(data)) fail("This complaint does not need legacy confirmation.");
       count = input.completedHearings;
-      if (!Number.isInteger(count) || count < 0 || count > 3) fail("Confirm 0 to 3 completed hearings.", "invalid-argument");
+      if (!Number.isInteger(count) || count < 0 || count > MAX_HEARINGS) fail("Confirm 0 to 6 completed hearing rounds.", "invalid-argument");
       note = text(input.reason, "Basis for confirmed hearing count");
       update.legacyCompletedHearings = count;
       update.legacyTrackingSnapshot = { status: data.status, schedule: data.schedule || null, summons: data.summons || null };
       update.status = count > 0 ? "awaiting_next_schedule" : "under_review";
       update.schedule = null;
-      if (count === 3) {
-        if (input.date || !["settled", "unsettled"].includes(input.outcome)) fail("After three completed hearings, record the confirmed resolved or unsettled conclusion without another schedule.", "invalid-argument");
-        close(input.outcome, text(input.summary, "Confirmed final conclusion"));
+      if (count === MAX_HEARINGS) {
+        if (input.date || !["settled", "unsettled"].includes(input.outcome)) fail("After six completed rounds, record the confirmed resolved or unsettled conclusion without another schedule.", "invalid-argument");
+        const summary = text(input.summary, "Confirmed final conclusion");
+        if (input.outcome === "settled") close("settled", summary);
+        else { update.status = "awaiting_cfa"; update.resolutionSummary = summary; }
       }
       if (input.date) {
         const hearing = schedule(input, count + 1, now, actor, input.operationId, true);
@@ -150,12 +181,12 @@ function planTrackingUpdate(data, input, now, actor) {
       break;
     }
     case "schedule_hearing": {
-      if (active || !["under_review", "awaiting_next_schedule"].includes(current) || count >= 3) fail("This complaint is not ready for a new hearing schedule.");
+      if (active || !["under_review", "awaiting_next_schedule"].includes(current) || count >= MAX_HEARINGS) fail("This complaint is not ready for a new hearing schedule.");
       const hearing = schedule(input, count + 1, now, actor, input.operationId);
       hearings.push(hearing);
       update.schedule = hearing;
       update.status = "hearing_scheduled";
-      note = `Hearing ${hearing.number} scheduled for ${hearing.date} at ${hearing.time} (Philippine time), ${hearing.venue}. ${hearing.notes}`.trim();
+      note = `${hearingLabel(hearing.number)} scheduled for ${hearing.date} at ${hearing.time} (Philippine time), ${hearing.venue}. ${hearing.notes}`.trim();
       details = { hearingId: hearing.id, hearingNumber: hearing.number, schedule: hearing };
       break;
     }
@@ -176,7 +207,7 @@ function planTrackingUpdate(data, input, now, actor) {
     case "issue_summons": {
       let hearing = active;
       if (!hearing) {
-        if (count >= 3) fail("This complaint has already reached 3 hearings.");
+        if (count >= MAX_HEARINGS) fail("This complaint has already reached 6 hearing rounds.");
         hearing = schedule({
           date: input.appearanceDate,
           time: input.appearanceTime,
@@ -195,22 +226,23 @@ function planTrackingUpdate(data, input, now, actor) {
           update.schedule = hearing;
         }
       }
-      const countVal = Number.isInteger(input.summonsCount) && input.summonsCount >= 1 && input.summonsCount <= 3
-        ? input.summonsCount
-        : Math.min(3, Math.max(1, hearing.number || 1));
+      const countVal = hearing.number;
       const summons = {
-        id: input.operationId, hearingId: hearing.id, hearingNumber: hearing.number,
+        id: input.operationId, hearingId: hearing.id, hearingNumber: hearing.number, ...hearingPhase(hearing.number),
         issuedAt: now.toISOString(), issuedBy: actor.id, issuedByName: actor.name,
-        barangay: data.barangay || "", respondentName: text(input.respondentName, "Respondent", true, 150),
+        barangay: actor.summonsOfficials?.barangay || data.barangay || "",
+        barangayId: actor.summonsOfficials?.barangayId || data.barangayId || "",
+        officials: actor.summonsOfficials || null,
+        respondentName: text(input.respondentName, "Respondent", true, 150),
         respondentAddress: text(input.respondentAddress, "Respondent address", true, 240),
         appearanceDate: hearing.date, appearanceTime: hearing.time, appearanceVenue: hearing.venue,
         hearingPurpose: text(input.hearingPurpose, "Reason / Subject", true, 400),
-        summonsCount: countVal, assignedTanod: text(input.assignedTanod || "Barangay Tanod", "Assigned tanod", false, 100),
+        summonsCount: countVal, assignedTanod: text(manualTanodName(input.assignedTanod), "Assigned tanod", false, 100),
         status: "issued", deliveryStatus: "pending", deliveryMethod: "Personal service via Barangay Tanod / Peace Officer",
       };
       update.summons = summons;
       update.summonsHistory = [...(data.summonsHistory || []), summons];
-      note = `Official summons generated for hearing ${hearing.number} on ${hearing.date} at ${hearing.time} (Philippine time), ${hearing.venue}. Awaiting handoff to ${summons.assignedTanod}.`;
+      note = `Official summons generated for ${hearingLabel(hearing.number)} on ${hearing.date} at ${hearing.time} (Philippine time), ${hearing.venue}. Awaiting handoff to ${summons.assignedTanod || "a Barangay Tanod"}.`;
       details = { summonsId: summons.id, hearingNumber: hearing.number };
       break;
     }
@@ -224,7 +256,7 @@ function planTrackingUpdate(data, input, now, actor) {
         update.summons = { ...summons, deliveryStatus: "handed_to_tanod", handedToTanodAt: now.toISOString(), handedToTanodBy: actor.id };
         update.summonsHistory = (data.summonsHistory || []).map((entry) => entry.id === summons.id ? update.summons : entry);
         label = "Summons Handed to Barangay Tanod";
-        note = `The summons has been handed to ${summons.assignedTanod} (Barangay Tanod) for delivery to the respondent. ${note}`;
+        note = `The summons has been handed to ${summons.assignedTanod ? `${summons.assignedTanod} (Barangay Tanod)` : "a Barangay Tanod"} for delivery to the respondent. ${note}`;
       }
       details = { summonsId: summons.id, hearingNumber: active.number, handoff: input.handoff === true };
       break;
@@ -238,9 +270,17 @@ function planTrackingUpdate(data, input, now, actor) {
         complainantAttendance: "present", respondentAttendance: "present", recordedAt: now.toISOString(), recordedBy: actor.id });
       update.schedule = null;
       if (input.outcome === "settled") { close("settled", note); label = "Resolved"; }
-      else if (active.number >= 3) { close("unsettled", note); label = "Closed — Unsettled"; }
+      else if (active.number >= MAX_HEARINGS) { update.status = "awaiting_cfa"; update.resolutionSummary = note; }
       else update.status = "awaiting_next_schedule";
       details = { hearingNumber: active.number, outcome: input.outcome, summary: note };
+      break;
+    case "record_nonattendance":
+      note = recordAbsence();
+      update.schedule = null;
+      update.status = active.number >= MAX_HEARINGS ? "awaiting_cfa" : "awaiting_next_schedule";
+      if (update.status === "awaiting_cfa") update.resolutionSummary = note;
+      details = { hearingNumber: active.number, ...hearingPhase(active.number), outcome: "no_agreement",
+        complainantAttendance: active.complainantAttendance, respondentAttendance: active.respondentAttendance };
       break;
     case "hearing_not_held":
       if (!active || manilaDate(now) < active.date) fail("Use ordinary schedule editing before the hearing date.");
@@ -260,49 +300,56 @@ function planTrackingUpdate(data, input, now, actor) {
       details = { cancelledHearingId: active?.id || null };
       break;
     case "issue_cfa": {
-      note = text(input.reason || input.summary || "Case unresolved / Respondent failed to appear after 3 hearings. Issued Certificate to File Action (KP Form 20).", "Reason for CFA", true, 1000);
-      if (active) {
-        active.status = "completed";
-        active.outcome = "unsettled";
-        active.summary = note;
-        active.respondentAttendance = input.respondentAttendance || active.respondentAttendance || "absent";
-        active.complainantAttendance = input.complainantAttendance || active.complainantAttendance || "present";
-        active.recordedAt = now.toISOString();
-        active.recordedBy = actor.id;
-      }
+      if (active || count < MAX_HEARINGS) fail("Record all 6 rounds (3 barangay and 3 lupon) before issuing a CFA.");
+      if (input.confirmEligibility !== true) fail("Confirm the office has checked the grounds and requirements for issuing this CFA.", "invalid-argument");
+      const chosenForm = cfaOptions(data).find(option => option.form === input.cfaForm);
+      if (!chosenForm) fail("Choose KP Form 20-A or 20-B.", "invalid-argument");
+      if (!chosenForm.available) fail("The recorded attendance and results do not support this CFA form. Review the hearing records first.");
+      if (chosenForm.needsOfficeRecords && input.confirmOfficeRecords !== true) fail("Check and confirm the paper records for missing attendance and outcomes.", "invalid-argument");
+      if (input.cfaForm === "20-B" && input.confirmUnjustifiedAbsence !== true) fail("Confirm proper notice, Pangkat proceedings and the respondent's absence without a valid reason.", "invalid-argument");
+      note = text(input.reason, "Reason for CFA", true, 1000);
       close("cfa_issued", note);
       update.cfaIssuedAt = now.toISOString();
       update.cfaIssuedBy = actor.id;
       update.cfaReason = note;
-      label = "Certificate to File Action Issued";
-      details = { cfaIssuedAt: now.toISOString(), reason: note };
+      update.cfaForm = chosenForm.form;
+      update.cfaGround = chosenForm.ground;
+      update.cfaEligibility = { officeChecked: true, officeRecordsConfirmed: input.confirmOfficeRecords === true,
+        unjustifiedAbsenceConfirmed: input.confirmUnjustifiedAbsence === true, checkedBy: actor.id, checkedAt: now.toISOString() };
+      update.cfaOfficials = { secretaryName: text(input.pangkatSecretaryName, "Pangkat secretary name", false, 150),
+        chairName: text(input.pangkatChairName, "Pangkat chairperson name", false, 150) };
+      label = `KP Form ${chosenForm.form} Issued`;
+      details = { cfaIssuedAt: now.toISOString(), reason: note, cfaForm: chosenForm.form, cfaGround: chosenForm.ground };
       break;
     }
     case "schedule_another_hearing": {
-      if (count >= 3 || (active && active.number >= 3)) {
-        fail("Maximum of 3 hearings reached. Please issue a Certificate to File Action (CFA).");
+      if (count >= MAX_HEARINGS || (active && active.number >= MAX_HEARINGS)) {
+        fail("Maximum of 6 hearing rounds reached. Record the last result before issuing a CFA.");
       }
       if (active) {
-        active.status = "completed";
-        active.outcome = "no_agreement";
-        active.summary = text(input.previousHearingNote || input.reason || "Respondent did not attend scheduled hearing.", "Previous hearing note", false, 1000);
-        active.respondentAttendance = input.respondentAttendance || "absent";
-        active.complainantAttendance = input.complainantAttendance || "present";
-        active.recordedAt = now.toISOString();
-        active.recordedBy = actor.id;
+        recordAbsence();
       }
       const nextNumber = (active ? active.number : count) + 1;
-      if (nextNumber > 3) {
-        fail("Maximum of 3 hearings reached. Please issue a Certificate to File Action (CFA).");
+      if (nextNumber > MAX_HEARINGS) {
+        fail("Maximum of 6 hearing rounds reached. Please issue a Certificate to File Action (CFA).");
       }
       const newHearing = schedule(input, nextNumber, now, actor, input.operationId);
       hearings.push(newHearing);
       update.schedule = newHearing;
       update.status = "hearing_scheduled";
       update.summons = null;
-      note = `Hearing ${newHearing.number} of 3 scheduled for ${newHearing.date} at ${newHearing.time} (Philippine time), ${newHearing.venue}. ${newHearing.notes || ""}`.trim();
+      note = `${hearingLabel(newHearing.number)} scheduled for ${newHearing.date} at ${newHearing.time} (Philippine time), ${newHearing.venue}. ${newHearing.notes || ""}`.trim();
       label = `Hearing ${newHearing.number} Scheduled`;
       details = { hearingId: newHearing.id, hearingNumber: newHearing.number, schedule: newHearing };
+      break;
+    }
+    case "notify_cfa": {
+      if (!finished || !(current === "cfa_issued" || data.closureOutcome === "cfa_issued")) fail("Issue a CFA before notifying the complainant about it.");
+      note = text(input.message, "CFA notice");
+      update.cfaLastNotifiedAt = now.toISOString();
+      update.cfaLastNotifiedBy = actor.id;
+      update.complaintTrackingVersion = data.complaintTrackingVersion || 0;
+      details = { cfaForm: ["20-A", "20-B"].includes(data.cfaForm) ? data.cfaForm : "20" };
       break;
     }
     case "record_external_update": {
@@ -317,7 +364,7 @@ function planTrackingUpdate(data, input, now, actor) {
       break;
     }
   }
-  if (action !== "record_external_update") update.hearings = hearings;
+  if (!["record_external_update", "notify_cfa"].includes(action)) update.hearings = hearings;
   update.stage = update.status || current;
   update.updatedAt = now.toISOString();
   update.updatedBy = actor.id;
@@ -325,7 +372,7 @@ function planTrackingUpdate(data, input, now, actor) {
   const event = { action, label, previousStatus: current, status: update.status || current, newStatus: update.status || current,
     note, remarks: note, details, date: now.toISOString(), performedAt: now.toISOString(),
     actorId: actor.id, performedBy: actor.id, actorName: actor.name, actorRole: actor.role, visibility: "public" };
-  return { update, event, title: label, message: note };
+  return { update, event, title: action === "notify_cfa" ? "Certificate to File Action ready" : label, message: note };
 }
-module.exports = { ACTION_LABELS, TERMINAL, manilaDate, validDate, startTime, trackingStatus, checkTrackingOperation,
+module.exports = { MAX_HEARINGS, HEARINGS_PER_PHASE, hearingPhase, hearingLabel, ACTION_LABELS, TERMINAL, manilaDate, validDate, startTime, trackingStatus, checkTrackingOperation,
   requiresTrackingConfirmation, completedHearings, activeHearing, currentSummons, planTrackingUpdate };

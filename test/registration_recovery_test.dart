@@ -78,6 +78,10 @@ void main() {
       expect(await _register(), isNull);
       expect(nativeAuth.currentUser, isNull);
       expect(AuthService.currentUser, isNull);
+      expect(nativeFunctions.requests.last, {
+        'email': _email,
+        'name': 'Newly entered name',
+      });
     },
   );
 
@@ -99,11 +103,14 @@ void main() {
   });
 
   test(
-    'resending sends only the email and keeps registration pending',
+    'resending sends the email and resident name and keeps registration pending',
     () async {
       expect(await _register(), isNull);
       await AuthService.requestRegistrationOtp();
-      expect(nativeFunctions.requests.last.keys, ['email']);
+      expect(nativeFunctions.requests.last, {
+        'email': _email,
+        'name': 'Newly entered name',
+      });
       expect(AuthService.hasPendingSignup, isTrue);
       expect(nativeAuth.currentUser, isNull);
     },

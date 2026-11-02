@@ -16,13 +16,119 @@ Submission complaint(Map<String, dynamic> fields) => Submission.fromMap({
   ...fields,
 });
 
+Future<void> openCaseDetails(WidgetTester tester) async {
+  await tester.ensureVisible(find.text('Case details'));
+  await tester.tap(find.text('Case details'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  testWidgets('closed complaint shows a short overview before case details',
+      (tester) async {
+    final item = complaint({
+      'status': 'closed',
+      'closureOutcome': 'cfa_issued',
+      'resolutionSummary': 'Certificate issued.',
+      'summons': {'status': 'issued'},
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(child: ComplaintTrackingView(complaint: item)),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Current status'), findsOneWidget);
+    expect(find.text('Next step'), findsOneWidget);
+    expect(find.text('Case details'), findsOneWidget);
+    expect(find.text('View Summons Issued to Respondent'), findsOneWidget);
+    expect(find.text('View summons'), findsNothing);
+    expect(find.text('Case Records & Updates'), findsNothing);
+    expect(find.text('Recorded Conclusion'), findsNothing);
+
+    await tester.ensureVisible(find.text('Case details'));
+    await tester.tap(find.text('Case details'));
+    await tester.pumpAndSettle();
+    expect(find.text('Certificate issued.'), findsOneWidget);
+    expect(find.text('Case Records & Updates'), findsOneWidget);
+    expect(find.text('View Summons Issued to Respondent'), findsOneWidget);
+    await tester.ensureVisible(find.text('View Summons Issued to Respondent'));
+    await tester.tap(find.text('View Summons Issued to Respondent'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OfficialSummonsPage), findsOneWidget);
+  });
+
+  testWidgets('compact complaint overview fits a small phone and keeps actions',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var resubmissions = 0;
+    final item = complaint({
+      'status': 'needs_information',
+      'statusHistory': [
+        {'status': 'needs_information', 'reason': 'Send a clearer photo.'},
+      ],
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ComplaintTrackingView(
+            complaint: item,
+            onResubmit: () => resubmissions++,
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Send a clearer photo.'), findsOneWidget);
+    expect(find.text('Update complaint'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Update complaint'));
+    expect(resubmissions, 1);
+  });
+  test('six rounds have separate barangay and lupon numbering', () {
+    for (var number = 1; number <= 6; number++) {
+      expect(complaintHearingLabel(number), '${number <= 3 ? 'Barangay' : 'Lupon'} Hearing ${(number - 1) % 3 + 1} of 3 · Round $number of 6');
+    }
+    final pending = complaint({'status': 'awaiting_cfa', 'legacyCompletedHearings': 6});
+    expect(pending.complaintFinished, false);
+    expect(pending.complaintStatusLabel, 'Awaiting CFA Issuance');
+    final issued = complaint({'status': 'closed', 'closureOutcome': 'cfa_issued'});
+    expect(issued.complaintFinished, true);
+    expect(issued.complaintStatusLabel, 'Closed — CFA Issued');
+    expect(complaint({'status': 'cfa_issued'}).complaintFinished, true);
+  });
+  testWidgets('resident sees lupon round and CFA pending without overflow', (tester) async {
+    tester.view.physicalSize = const Size(320, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final item = complaint({'status': 'hearing_scheduled', 'legacyCompletedHearings': 3,
+      'hearings': [{'id': 'lupon-1', 'number': 4, 'status': 'scheduled', 'date': '2099-11-01', 'time': '09:00', 'venue': 'Barangay Hall'}]});
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: ComplaintTrackingView(complaint: item)))));
+    await openCaseDetails(tester);
+    expect(find.text('Lupon Hearing 1 of 3 · Round 4 of 6'), findsOneWidget);
+    expect(find.text('Barangay Lupon'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    final pending = complaint({'status': 'awaiting_cfa', 'legacyCompletedHearings': 6});
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: ComplaintTrackingView(complaint: pending)))));
+    await openCaseDetails(tester);
+    expect(find.text('Awaiting CFA issuance.'), findsOneWidget);
+    expect(find.textContaining('All six rounds are recorded'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('resident distinguishes tanod handoff from service to the respondent', (tester) async {
     final item = complaint({'summons': {
       'appearanceDate': '2026-11-01', 'appearanceTime': '09:00',
       'assignedTanod': 'Pedro Reyes', 'status': 'issued', 'deliveryStatus': 'handed_to_tanod',
     }});
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: ComplaintTrackingView(complaint: item)))));
+    expect(find.text('Summons with the tanod. Delivery is not yet confirmed.'), findsOneWidget);
+    await openCaseDetails(tester);
     expect(find.text('Assigned tanod: Pedro Reyes'), findsOneWidget);
     expect(find.text('Handed to Barangay Tanod for delivery to the respondent.'), findsOneWidget);
     expect(find.text('Handoff to the tanod does not confirm service to the respondent.'), findsOneWidget);
@@ -48,6 +154,22 @@ void main() {
     expect(item.complaintStatusLabel, 'Result Pending');
     expect(item.complaintFinished, false);
     expect(item.completedHearingCount, 0);
+  });
+  testWidgets('past hearing asks the resident to wait for the result',
+      (tester) async {
+    final item = complaint({
+      'status': 'hearing_scheduled',
+      'hearings': [
+        {'number': 1, 'status': 'scheduled', 'date': '2020-01-01', 'time': '09:00'},
+      ],
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: ComplaintTrackingView(complaint: item)),
+    ));
+
+    expect(find.text('Wait for the hearing result.'), findsOneWidget);
+    expect(find.text('Attend your hearing. Bring your ID and evidence.'),
+        findsNothing);
   });
   test('only completed hearings count; legacy summons never establish count', () {
     final item = complaint({
@@ -94,10 +216,11 @@ void main() {
     });
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: ComplaintTrackingView(complaint: item)))));
     expect(find.text('Closed — Unsettled'), findsOneWidget);
+    await openCaseDetails(tester);
     expect(find.text('No agreement was reached after the final hearing.'), findsOneWidget);
-    expect(find.text('Hearing 3 · No agreement'), findsOneWidget);
+    expect(find.text('Barangay Hearing 3 of 3 · Round 3 of 6 · No agreement'), findsOneWidget);
     expect(find.text('Reference: Office-123'), findsOneWidget);
-    expect(find.text('Juan Dela Cruz'), findsOneWidget);
+    expect(find.textContaining('Juan Dela Cruz'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -153,10 +276,10 @@ void main() {
     expect(find.byType(OfficialSummonsPage), findsOneWidget);
 
     // Verify the FIRST view is the Official Form (KP Form 9)
-    expect(find.text('OFFICE OF THE LUPONG TAGAPAMAYAPA'), findsOneWidget);
-    expect(find.text('KP Form No. 9 - Summons for the Respondent'), findsOneWidget);
+    expect(find.text('OFFICE OF THE BARANGAY CAPTAIN'), findsOneWidget);
+    expect(find.textContaining('Barangay Summons ·'), findsOneWidget);
     expect(find.text('S U M M O N S'), findsOneWidget);
-    expect(find.text('KP-BC-2026-630019'), findsOneWidget);
+    expect(find.text('BC-2026-630019'), findsOneWidget);
 
     // Switch to Hearing Notice tab
     await tester.tap(find.text('Hearing Notice').first);
@@ -167,11 +290,11 @@ void main() {
     expect(find.text('Case Parties'), findsOneWidget);
 
     // Switch back to Official Form tab
-    await tester.tap(find.text('Official Form (KP Form 9)').first);
+    await tester.tap(find.text('Official Form').first);
     await tester.pumpAndSettle();
 
     // Verify Official Form is displayed again
-    expect(find.text('OFFICE OF THE LUPONG TAGAPAMAYAPA'), findsOneWidget);
+    expect(find.text('OFFICE OF THE BARANGAY CAPTAIN'), findsOneWidget);
 
     // Pop the page using back button
     await tester.tap(find.byIcon(Icons.arrow_back_rounded));

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#124c3d">
+  <script>
+    // Apply only the public site's preference before paint; admin has its own theme.
+    (() => {
+      let preference;
+      try { preference = localStorage.getItem('esugid-landing-theme'); } catch {}
+      const dark = preference === 'dark' || (preference !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.landingTheme = dark ? 'dark' : 'light';
+      document.querySelector('meta[name="theme-color"]').content = dark ? '#101f1b' : '#124c3d';
+    })();
+  </script>
+  <meta name="description" content="Your barangay, in your pocket. E-SUGID connects Barili residents with community announcements, reports, local services, and the marketplace. Download the Android app.">
+  <meta property="og:title" content="E-SUGID — A closer community. A better Barili.">
+  <meta property="og:description" content="Stay informed, make your voice heard, and connect with your community. Get the E-SUGID Android app.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://e-sugid.web.app/landing-assets/municipal-hall.png">
+  <title>E-SUGID — Your community, closer.</title>
+  <link rel="icon" href="/landing-assets/esugid.png" type="image/png">
+  <link rel="preload" href="/landing-assets/Outfit-Bold.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="/landing.css">
+  <link rel="stylesheet" href="/landing-theme.css">
+  <script src="/landing.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="download-icon" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+    <symbol id="megaphone" viewBox="0 0 24 24"><path d="m4 9 13-5v16L4 15V9Zm0 1H2v4h2m3 2 2 5h3l-2-4M21 8v8"/></symbol>
+    <symbol id="report" viewBox="0 0 24 24"><path d="M9 4H5v17h14V4h-4M9 2h6v5H9zM8 12h8m-8 4h5"/></symbol>
+    <symbol id="people" viewBox="0 0 24 24"><circle cx="9" cy="7" r="3"/><path d="M2 21v-4a7 7 0 0 1 14 0v4M17 4a3 3 0 0 1 0 6m2 4a6 6 0 0 1 3 5v2"/></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+    <symbol id="shop" viewBox="0 0 24 24"><path d="M4 10v11h16V10M2 10l3-7h14l3 7M2 10a3 3 0 0 0 5 2 3 3 0 0 0 5 0 3 3 0 0 0 5 0 3 3 0 0 0 5-2M9 21v-7h6v7"/></symbol>
+    <symbol id="grid" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></symbol>
+    <symbol id="shield" viewBox="0 0 24 24"><path d="m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="android" viewBox="0 0 24 24"><path d="M4 17a8 8 0 0 1 16 0H4Zm3-9L5 4m12 4 2-4"/><path d="M8 13h.01M16 13h.01" stroke-width="3"/></symbol>
+    <symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/></symbol>
+  </defs></svg>
+
+  <header class="site-header">
+    <nav class="nav wrap" aria-label="Main navigation">
+      <a class="brand" href="/" aria-label="E-SUGID home"><img src="/landing-assets/esugid.png" width="48" height="48" alt=""><span>E-SUGID<small>BARILI, CEBU</small></span></a>
+      <div class="nav-links"><a href="#app-preview">The app</a><a href="#how-it-works">How it works</a><a href="#faqs">FAQs</a></div>
+      <div class="nav-actions">
+        <button class="landing-theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false" hidden>
+          <span class="theme-sky" aria-hidden="true">
+            <span class="theme-stars">✦ · ˚</span>
+            <svg class="theme-sun" viewBox="0 0 24 24"><use href="#sun"/></svg>
+            <svg class="theme-moon" viewBox="0 0 24 24"><path d="M20.7 14A8.9 8.9 0 0 1 10 3.3 9 9 0 1 0 20.7 14Z"/></svg>
+            <span class="theme-horizon"></span>
+          </span>
+        </button>
+        <a class="admin-link" href="/admin">Admin Login <svg class="icon"><use href="#arrow"/></svg></a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy entrance">
+        <p class="eyebrow"><span class="little-line"></span> LOCAL CONNECTION. REAL POSSIBILITIES.</p>
+        <h1 id="hero-title">A closer community.<br>A <span class="underlined">better Barili.</span></h1>
+        <p class="hero-description">From the latest barangay updates to the concerns that matter to you. E-SUGID brings your community a little closer, wherever you are.</p>
+        <div class="hero-actions"><a class="button button-green" href="/downloads/app-release.apk" download="app-release.apk"><svg class="icon"><use href="#download-icon"/></svg>Download for Android<svg class="icon button-arrow"><use href="#arrow"/></svg></a><a class="text-link" href="#app-preview">Take a look around <span aria-hidden="true">↗</span></a></div>
+        <p class="download-note"><svg class="icon"><use href="#android"/></svg> Free to download <span>·</span> <span data-release-version>Android APK</span> <span>·</span> <span data-release-size>100.4 MB</span></p>
+        <div class="hero-community"><span class="community-mark"><svg class="icon"><use href="#people"/></svg></span><div><strong>42 barangays. One community.</strong><span>Made for the people who call Barili home.</span></div></div>
+      </div>
+      <div class="hero-visual entrance entrance-later" aria-label="E-SUGID app preview">
+        <div class="hero-sky" aria-hidden="true"><svg class="hero-sun" viewBox="0 0 100 100"><circle cx="50" cy="50" r="29"/><g><path d="M50 6v7m0 74v7M6 50h7m74 0h7M19 19l5 5m52 52 5 5M19 81l5-5m52-52 5-5"/></g></svg><svg class="hero-moon" viewBox="0 0 100 100"><path d="M80 58A35 35 0 0 1 42 17a35 35 0 1 0 38 41Z"/><circle cx="79" cy="20" r="2"/><circle cx="91" cy="40" r="1.5"/></svg></div>
+        <div class="orbit orbit-outer"></div><div class="orbit orbit-inner"></div><span class="visual-plus plus-one">+</span><span class="visual-plus plus-two">+</span>
+        <div class="floating-note note-announcement"><span class="note-icon"><svg class="icon"><use href="#megaphone"/></svg></span><div><strong>Stay in the know</strong><small>Updates from your community</small></div><span class="note-dot"></span></div>
+        <div class="phone phone--upload">
+          <div class="phone-capture-frame">
+            <img class="app-screen-capture" src="/landing-assets/screenshots/home-dashboard.jpg" width="1080" height="2460" fetchpriority="high" alt="E-SUGID Home dashboard with barangay information, local weather, and the latest community announcements">
+          </div>
+        </div>
+        <div class="floating-note note-report"><span class="note-icon"><svg class="icon"><use href="#check"/></svg></span><div><strong>Your voice, heard.</strong><small>Report. Connect. Stay informed.</small></div></div>
+        <span class="preview-caption">Home · inside the E-SUGID app</span>
+      </div>
+    </section>
+
+    <section class="community-strip" aria-label="Serving the Barili community"><div class="wrap strip-inner"><span class="strip-intro"><svg class="icon"><use href="#pin"/></svg> ROOTED IN BARILI. BUILT FOR YOU.</span><span>Local updates</span><span class="strip-star" aria-hidden="true">✳</span><span>Everyday services</span><span class="strip-star" aria-hidden="true">✳</span><span>Stronger connections</span></div></section>
+
+    <section class="showcase-section section-space" id="app-preview" aria-labelledby="showcase-title">
+      <div class="wrap">
+        <div class="showcase-heading reveal"><div><p class="eyebrow">A LOOK INSIDE E-SUGID.</p><h2 id="showcase-title">Your community,<br>one screen at a time.</h2><p class="showcase-description">Catch up on local updates, reach out for help, or take a break with Carabao Runner. Here’s the app, up close.</p></div></div>
+        <nav class="showcase-shortcuts" aria-label="Showcase shortcuts"><a href="#preview-alerts">Emergency alerts <span aria-hidden="true">↗</span></a><a href="#preview-game">Carabao Runner <span aria-hidden="true">↗</span></a></nav>
+        <!-- APP_SHOWCASE -->
+      </div>
+      <dialog class="preview-dialog" id="screenshot-preview" aria-labelledby="preview-title">
+        <div class="preview-toolbar"><div><span class="eyebrow">E-SUGID · APP &amp; WEB PREVIEWS</span><h2 id="preview-title">App preview</h2></div><div class="preview-actions"><button type="button" data-preview-zoom aria-pressed="false">Zoom in</button><button type="button" data-preview-close aria-label="Close preview">Close <span aria-hidden="true">×</span></button></div></div>
+        <div class="preview-canvas"><img alt=""></div>
+        <p class="preview-description"></p>
+        <div class="preview-footer"><button type="button" data-preview-previous aria-label="Previous preview">← Previous preview</button><span data-preview-position aria-live="polite"></span><button type="button" data-preview-next aria-label="Next preview">Next preview →</button></div>
+      </dialog>
+    </section>
+
+    <section class="features wrap section-space" id="features" aria-labelledby="features-title">
+      <div class="section-heading reveal"><div><p class="eyebrow">A SMALL APP. A BIGGER CONNECTION.</p><h2 id="features-title">Community life,<br>made a little easier.</h2></div><p>Less searching. More doing. The things you need from your community, together in one familiar place.</p></div>
+      <div class="feature-grid">
+        <article class="feature reveal"><div class="feature-top"><span class="feature-icon"><svg class="icon"><use href="#megaphone"/></svg></span><span class="feature-number">01 / STAY INFORMED</span></div><h3>Never miss what matters.</h3><p>Find barangay announcements, local advisories, and community updates without the guesswork.</p><span class="feature-tag">Community announcements <span aria-hidden="true">↗</span></span></article>
+        <article class="feature reveal"><div class="feature-top"><span class="feature-icon feature-icon-gold"><svg class="icon"><use href="#report"/></svg></span><span class="feature-number">02 / MAKE YOURSELF HEARD</span></div><h3>A voice for your concerns.</h3><p>Report a public concern or file a complaint, then follow the updates and next steps in the Report Center.</p><span class="feature-tag">Reports &amp; case tracking <span aria-hidden="true">↗</span></span></article>
+        <article class="feature reveal"><div class="feature-top"><span class="feature-icon feature-icon-blue"><svg class="icon"><use href="#people"/></svg></span><span class="feature-number">03 / FIND YOUR COMMUNITY</span></div><h3>More local. More connected.</h3><p>Explore community services, find useful contacts, and discover what your neighbors offer in the marketplace.</p><span class="feature-tag">Services &amp; local marketplace <span aria-hidden="true">↗</span></span></article>
+      </div>
+    </section>
+
+    <section class="local-section wrap" aria-labelledby="local-title">
+      <div class="local-photo reveal"><img src="/landing-assets/municipal-hall.png" width="1620" height="972" loading="lazy" alt="The municipal hall of Barili, Cebu"><div class="photo-caption"><svg class="icon"><use href="#pin"/></svg> BARILI, CEBU <span>A place we call home.</span></div></div>
+      <div class="local-copy reveal"><p class="eyebrow">OUR TOWN. OUR CONNECTION.</p><h2 id="local-title">Built around<br>life in Barili.</h2><p>Good communities start with people who care. E-SUGID helps residents, barangays, local offices, and organizations stay connected to the things that make a difference.</p><ul class="benefits"><li><svg class="icon"><use href="#check"/></svg>Information closer to its source</li><li><svg class="icon"><use href="#check"/></svg>A clearer way to follow your reports</li><li><svg class="icon"><use href="#check"/></svg>Local connections, wherever you are</li></ul><a class="text-link" href="#download">Bring your community with you <span aria-hidden="true">↗</span></a></div>
+    </section>
+
+    <section class="how-section section-space" id="how-it-works" aria-labelledby="how-title"><div class="wrap"><div class="center-heading reveal"><p class="eyebrow">YOUR COMMUNITY IS A FEW TAPS AWAY.</p><h2 id="how-title">A simple start. A closer connection.</h2></div><ol class="steps"><li class="reveal"><span class="step-number">01</span><h3>Get the app.</h3><p>Download the Android APK from this page and install E-SUGID on your phone.</p></li><li class="reveal"><span class="step-number">02</span><h3>Make it yours.</h3><p>Create your resident account, choose your barangay, and verify your email.</p></li><li class="reveal"><span class="step-number">03</span><h3>Be part of it.</h3><p>Explore local updates and services. Complete resident verification to access features that require it.</p></li></ol></div></section>
+
+    <section class="download-section wrap reveal" id="download" aria-labelledby="download-title"><div class="download-content"><p class="eyebrow">YOUR NEXT CONNECTION STARTS HERE.</p><h2 id="download-title">Your barangay.<br>In your pocket.</h2><p>Take the first step toward a more connected community.<br>Download E-SUGID for Android today.</p><a class="button button-cream" href="/downloads/app-release.apk" download="app-release.apk"><svg class="icon"><use href="#download-icon"/></svg>Download the app<svg class="icon button-arrow"><use href="#arrow"/></svg></a><p class="download-meta"><span data-release-version>Android APK</span> <span>·</span> <span data-release-size>100.4 MB</span> <span>·</span> Free</p><p class="download-error" id="download-status" role="status" hidden>The download is temporarily unavailable. Please refresh this page and try again.</p></div><div class="download-art" aria-hidden="true"><span class="download-sun"></span><img src="/landing-assets/barili-landscape.jpg" width="1376" height="480" loading="lazy" alt=""><span class="download-stamp"><svg class="icon"><use href="#people"/></svg><span>MADE FOR<br><strong>BARILI.</strong></span></span></div></section>
+
+    <section class="faq-section wrap section-space" id="faqs" aria-labelledby="faq-title"><div class="faq-intro reveal"><p class="eyebrow">A LITTLE HELP GETTING STARTED.</p><h2 id="faq-title">Good questions.<br>Simple answers.</h2><p>Here are a few things to know before you join.</p></div><div class="faq-list reveal"><details><summary>How do I install the Android app?<span aria-hidden="true">+</span></summary><p>Tap Download the app, then open <strong>app-release.apk</strong> from your phone’s Downloads. If Android asks, allow this browser or file manager to install this app, then tap Install. You can turn that permission off again afterward.</p></details><details><summary>Who is E-SUGID for?<span aria-hidden="true">+</span></summary><p>E-SUGID is made for residents of Barili, Cebu, across its 42 barangays. Local officials and organization staff use the separate admin console to manage their services.</p></details><details><summary>Is the app free? Is there an iPhone version?<span aria-hidden="true">+</span></summary><p>The Android app is free to download. An internet connection is needed for online features, and your mobile provider’s data charges may apply. This download is for Android; an iPhone version is not available here.</p></details><details><summary>What do I need to create an account?<span aria-hidden="true">+</span></summary><p>You must be at least 15 years old. Enter your details and barangay, then verify your email using the code sent to your inbox. Some services also require resident verification.</p></details><details><summary>Where do barangay and organization staff log in?<span aria-hidden="true">+</span></summary><p>Use <a href="/admin">Admin Login</a> at the top of this page to open the web console. You’ll need an authorized staff account.</p></details></div></section>
+  </main>
+
+  <footer class="site-footer"><div class="wrap footer-inner"><a class="brand" href="/" aria-label="E-SUGID home"><img src="/landing-assets/esugid.png" width="44" height="44" alt=""><span>E-SUGID<small>YOUR COMMUNITY, CLOSER.</small></span></a><p>Made for a more connected Barili, Cebu.</p><a class="footer-top" href="#main">Back to top <span aria-hidden="true">↑</span></a></div><div class="wrap footer-bottom"><span>© <span id="current-year">2026</span> E-SUGID</span><span>42 barangays. One community.</span><a href="/admin">Admin Login <span aria-hidden="true">↗</span></a></div></footer>
+</body>
+</html>

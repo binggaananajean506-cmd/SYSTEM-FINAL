@@ -2,6 +2,7 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: "./tests",
+  testIgnore: "landing-page.spec.js",
   timeout: 60000,
   reporter: "list",
   webServer: process.env.ESUGID_ADMIN_URL ? undefined : {

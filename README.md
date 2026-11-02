@@ -286,6 +286,32 @@ replace stale messages, and every message can be dismissed. Complaint and
 concern validation also stays visible beside the form action and reveals the
 first invalid field without clearing entered information.
 
+## Public landing page and web deployment
+
+Firebase Hosting serves the resident landing page at `https://e-sugid.web.app/`
+and the existing staff console at `/admin`. Edit public page content in
+`landing_web/`; its CSS and JavaScript are independent of the admin bundle.
+The native Android download is `/downloads/app-release.apk`.
+
+Publish web changes with:
+
+```powershell
+npm.cmd --prefix admin_web run build
+node scripts/prepare-deploy.mjs
+firebase.cmd deploy --only hosting
+```
+
+Staging copies the current signed `output/app-release.apk` and creates
+`release.json` with its verified package version, build number, size, and SHA-256.
+The APK version must match `pubspec.yaml`; staging fails before clearing the old
+output if the APK is missing or outdated. The installed Android SDK's aapt
+validates it. No signing key or local signing configuration is published.
+
+For local review, stage the files, run `node scripts/serve-deploy.mjs`, and open
+`http://127.0.0.1:4174`. Landing checks run with
+`admin_web/node_modules/.bin/playwright.cmd test --config admin_web/playwright.landing.config.cjs`.
+The normal admin Playwright configuration continues to test the admin surface.
+
 ## Release limitations
 
 Create the protected release keystore and `android/key.properties` (see

@@ -181,7 +181,7 @@ Future<bool?> showExitConfirmationDialog(BuildContext context) {
 
                             // Title
                             Text(
-                              'Leaving so soon?',
+                              'Exit E-SUGID?',
                               textAlign: TextAlign.center,
                               style: GoogleFonts.outfit(
                                 fontSize: 20,
@@ -194,7 +194,7 @@ Future<bool?> showExitConfirmationDialog(BuildContext context) {
 
                             // Subtitle description
                             Text(
-                              'Are you sure you want to exit the application? We hope to see you back soon!',
+                              'Are you sure you want to exit the app?',
                               textAlign: TextAlign.center,
                               style: GoogleFonts.outfit(
                                 fontSize: 13,
@@ -225,7 +225,7 @@ Future<bool?> showExitConfirmationDialog(BuildContext context) {
                                       ),
                                       alignment: Alignment.center,
                                       child: Text(
-                                        'Stay',
+                                        'Cancel',
                                         style: GoogleFonts.outfit(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w800,
@@ -285,7 +285,7 @@ Future<bool?> showExitConfirmationDialog(BuildContext context) {
                                           ),
                                           const SizedBox(width: 5),
                                           Text(
-                                            'Exit App',
+                                            'Exit',
                                             style: GoogleFonts.outfit(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w900,

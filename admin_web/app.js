@@ -1,4 +1,10 @@
 import { installChartTheme, themeSeriesCssColor } from "./theme-charts.mjs";
+import { prepareAnnouncementImage } from "./upload-image.mjs";
+import { timedCallable } from "./action-timing.mjs";
+import { createBackgroundActions } from "./background-actions.mjs";
+import cleanupRules from "../functions/concern_cleanup.js";
+import cfaForms from "../functions/cfa_forms.js";
+import "./background-actions.css";
 import { initializeApp } from "firebase/app";
 import {
   arrayUnion,
@@ -7,6 +13,7 @@ import {
   doc,
   getCountFromServer,
   getDoc,
+  getDocFromServer,
   getDocs,
   getFirestore,
   limit,
@@ -36,7 +43,7 @@ import {
 } from "firebase/auth";
 import {
   getFunctions,
-  httpsCallable
+  httpsCallable as firebaseCallable
 } from "firebase/functions";
 import {
   deleteObject,
@@ -52,6 +59,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createComplaintTracking, complaintBucket, complaintNeedsAction } from "./complaint_tracking.mjs";
 import trackingRules from "../functions/complaint_tracking.js";
+import summonsRules from "../functions/summons_officials.js";
 import verificationRules from "../functions/verification_helpers.js";
 import { createNotificationReadState } from "./notification_read_state.mjs";
 import { DEFAULT_EMERGENCY_CONTACTS, emergencyHotlineDirectory } from "./emergency_hotlines.mjs";
@@ -74,6 +82,7 @@ const auth = getAuth(app);
 const notificationReadState = createNotificationReadState(() => window.localStorage);
 const storage = getStorage(app);
 const functions = getFunctions(app, "asia-southeast1");
+const httpsCallable = timedCallable(firebaseCallable);
 const createStaffAccountCall = httpsCallable(functions, "createStaffAccount");
 const getStaffRegistrationOptionsCall = httpsCallable(functions, "getStaffRegistrationOptions");
 const submitStaffRegistrationCall = httpsCallable(functions, "submitStaffRegistration");
@@ -101,8 +110,11 @@ const manageEmergencyContactCall = httpsCallable(functions, "manageEmergencyCont
 const listConcernRecipientsCall = httpsCallable(functions, "listConcernRecipients");
 const forwardConcernCall = httpsCallable(functions, "forwardConcern");
 const reviewConcernCall = httpsCallable(functions, "reviewConcern");
+const deleteConcernCall = httpsCallable(functions, "deleteConcern");
+const deleteComplaintCall = httpsCallable(functions, "deleteComplaint");
 const issueConcernSummonsCall = httpsCallable(functions, "issueConcernSummons");
 const advanceComplaintWorkflowCall = httpsCallable(functions, "advanceComplaintWorkflow");
+const getSummonsOfficialsCall = httpsCallable(functions, "getSummonsOfficials", { timeout: 10000 });
 const flagConcernCall = httpsCallable(functions, "flagConcern");
 const listResidentConcernFlagsCall = httpsCallable(functions, "listResidentConcernFlags");
 const manageConcernRecipientCall = httpsCallable(functions, "manageConcernRecipient");
@@ -323,6 +335,12 @@ const authMessage = byId("authMessage");
 const globalSearch = byId("globalSearch") || { value: "", addEventListener: () => {} };
 if (byId("exportConcerns")) byId("exportConcerns").innerHTML = '<span class="material-symbols-rounded">download</span>Download';
 const modal = byId("adminModal");
+const backgroundActions = createBackgroundActions({
+  host: byId("admin-dashboard"),
+  owner: () => auth.currentUser?.uid || state.currentProfile?.id || 'session',
+  errorMessage: callableErrorMessage,
+  notify: showToast,
+});
 const confirmDialog = byId("confirmDialog");
 let confirmationResolve = null;
 let confirmationFocus = null;
@@ -349,6 +367,7 @@ let activeIncomingEmergencyId = null;
 const isActivationRoute = () => new URLSearchParams(window.location.search).get("setup") === "1";
 
 onAuthStateChanged(auth, async (user) => {
+  backgroundActions.refresh();
   if (organizationRegistrationInProgress) return;
   if (!user && registrationSuccessScreen && !registrationSuccessScreen.hidden) return;
   clearRealtimeListeners();
@@ -4583,6 +4602,7 @@ function renderConcernReport(target) {
                       <span class="action-dot dot-resolved"></span>
                       <span>Resolved</span>
                     </button>
+                    ${concernDeleteMenuMarkup(item)}
                   </div>
                 </div>
               </div>
@@ -4670,6 +4690,7 @@ function renderConcernReport(target) {
                                   <span class="action-dot dot-resolved"></span>
                                   <span>Resolved</span>
                                 </button>
+                                ${concernDeleteMenuMarkup(item)}
                               </div>
                             </div>
                           </div>
@@ -4727,6 +4748,18 @@ window.backToConcernReport = () => {
   renderConcerns();
 };
 
+let activeGroupedConcernMenu = null;
+function closeGroupedConcernMenu() {
+  if (activeGroupedConcernMenu) {
+    const { menu, placeholder, button } = activeGroupedConcernMenu;
+    menu.hidden = true;
+    if (placeholder.isConnected) placeholder.replaceWith(menu);
+    else menu.remove();
+    button?.setAttribute("aria-expanded", "false");
+    activeGroupedConcernMenu = null;
+  }
+  document.querySelectorAll(".grouped-action-menu").forEach(menu => { menu.hidden = true; });
+}
 window.toggleConcernActionDropdown = (id, event) => {
   if (event) {
     event.stopPropagation();
@@ -4736,6 +4769,7 @@ window.toggleConcernActionDropdown = (id, event) => {
   const targetMenu = byId(`groupActionDropdown_${id}`);
   const btn = event?.currentTarget || event?.target?.closest("button");
   const wasHidden = targetMenu ? targetMenu.hidden : true;
+  closeGroupedConcernMenu();
   allMenus.forEach((m) => {
     m.hidden = true;
     m.style.position = "";
@@ -4745,12 +4779,19 @@ window.toggleConcernActionDropdown = (id, event) => {
     m.style.right = "";
   });
   if (targetMenu && wasHidden) {
+    const placeholder = document.createComment("Concern action menu");
+    targetMenu.before(placeholder);
+    document.body.appendChild(targetMenu);
+    activeGroupedConcernMenu = { menu: targetMenu, placeholder, button: btn };
+    btn?.setAttribute("aria-expanded", "true");
     targetMenu.hidden = false;
     if (btn) {
       const rect = btn.getBoundingClientRect();
       targetMenu.style.position = "fixed";
       targetMenu.style.zIndex = "99999";
-      const menuHeight = 145;
+      targetMenu.style.maxHeight = "calc(100dvh - 20px)";
+      targetMenu.style.overflowY = "auto";
+      const menuHeight = Math.min(targetMenu.getBoundingClientRect().height, window.innerHeight - 20);
       const spaceBelow = window.innerHeight - rect.bottom;
       if (spaceBelow < menuHeight && rect.top > menuHeight) {
         targetMenu.style.top = `${Math.max(10, rect.top - menuHeight - 4)}px`;
@@ -4767,19 +4808,24 @@ if (typeof document !== "undefined" && !window._groupedActionMenuDismissBound) {
   window._groupedActionMenuDismissBound = true;
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".grouped-card-action-wrap") && !e.target.closest(".grouped-action-menu")) {
-      document.querySelectorAll(".grouped-action-menu").forEach((m) => { m.hidden = true; });
+      closeGroupedConcernMenu();
     }
   });
-  window.addEventListener("scroll", () => {
-    document.querySelectorAll(".grouped-action-menu").forEach((m) => { m.hidden = true; });
+  window.addEventListener("scroll", (event) => {
+    if (!activeGroupedConcernMenu?.menu.contains(event.target)) closeGroupedConcernMenu();
   }, true);
+  window.addEventListener("resize", closeGroupedConcernMenu);
+  document.addEventListener("keydown", event => { if (event.key === "Escape") closeGroupedConcernMenu(); });
 }
 
 window.triggerConcernActionFromDetail = (id, action) => {
-  document.querySelectorAll(".grouped-action-menu").forEach((m) => { m.hidden = true; });
+  closeGroupedConcernMenu();
   const item = findCase(id);
   const status = item ? concernStatus(item) : "";
-  if (action === "handle") {
+  if (action === "delete") {
+    closeConcernActions();
+    window.requestDeleteConcern(id);
+  } else if (action === "handle") {
     if (status === "being_handled" || status === "resolved") return;
     window.startHandlingConcern(id);
   } else if (action === "request_information") {
@@ -5100,21 +5146,9 @@ window.openIndividualOfficialReport = (parentId, reportIndex) => {
   if (downloadBtn) {
     downloadBtn.onclick = () => downloadIndividualOfficialPdf(reportData);
   }
-  const downloadBtnBottom = byId("officialReportDownloadPdfBtnBottom");
-  if (downloadBtnBottom) {
-    downloadBtnBottom.onclick = () => downloadIndividualOfficialPdf(reportData);
-  }
   const printBtn = byId("officialReportPrintBtn");
   if (printBtn) {
     printBtn.onclick = () => printIndividualOfficialReport();
-  }
-  const printBtnBottom = byId("officialReportPrintBtnBottom");
-  if (printBtnBottom) {
-    printBtnBottom.onclick = () => printIndividualOfficialReport();
-  }
-  const closeBtnBottom = byId("officialReportCloseBtnBottom");
-  if (closeBtnBottom) {
-    closeBtnBottom.onclick = () => closeOfficialReportModal();
   }
 
   const overlay = byId("officialReportModalOverlay");
@@ -5140,9 +5174,7 @@ window.closeOfficialReportModal = () => {
 
 window.downloadIndividualOfficialPdf = async (data) => {
   const button = byId("officialReportDownloadPdfBtn");
-  const buttonBottom = byId("officialReportDownloadPdfBtnBottom");
   if (button) setButtonBusy(button, true, "Preparing PDF...");
-  if (buttonBottom) setButtonBusy(buttonBottom, true, "Preparing PDF...");
   try {
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
     const green = [7, 92, 68];
@@ -5222,7 +5254,6 @@ window.downloadIndividualOfficialPdf = async (data) => {
     showToast(`PDF could not be created: ${callableErrorMessage(err)}`, true);
   } finally {
     if (button) setButtonBusy(button, false);
-    if (buttonBottom) setButtonBusy(buttonBottom, false);
   }
 };
 
@@ -5235,12 +5266,13 @@ window.printIndividualOfficialReport = () => {
 };
 
 document.addEventListener("click", (event) => {
-  if (!event.target.closest(".grouped-card-action-wrap")) {
-    document.querySelectorAll(".grouped-action-menu").forEach((m) => { m.hidden = true; });
+  if (!event.target.closest(".grouped-card-action-wrap") && !event.target.closest(".grouped-action-menu")) {
+    closeGroupedConcernMenu();
   }
 });
 
 function renderConcerns() {
+  closeGroupedConcernMenu();
   // Shared case actions call this after saving; on the Complaints page the
   // complaint board is what needs refreshing.
   if (state.page === "complaints") {
@@ -5356,7 +5388,8 @@ window.openConcernActions = (button, id) => {
   const isReadOnlyOversight = isLguAdmin() || canonicalRole(state.currentProfile?.role) === "mayor";
   menu.innerHTML = `
     <button type="button" role="menuitem" onclick="runConcernAction('${isReadOnlyOversight ? "view" : "review"}','${safeId(item.id)}')"><span class="material-symbols-rounded">${isReadOnlyOversight ? "visibility" : "rate_review"}</span><span><strong>${isReadOnlyOversight ? "View Record" : "Review Case"}</strong><small>${isReadOnlyOversight ? "Open the read-only case file" : "Open case workspace"}</small></span></button>
-    <button type="button" role="menuitem" onclick="runConcernAction('pdf','${safeId(item.id)}')"><span class="material-symbols-rounded">picture_as_pdf</span><span><strong>Download PDF</strong><small>Save official record</small></span></button>`;
+    <button type="button" role="menuitem" onclick="runConcernAction('pdf','${safeId(item.id)}')"><span class="material-symbols-rounded">picture_as_pdf</span><span><strong>Download PDF</strong><small>Save official record</small></span></button>
+    ${concernDeleteMenuMarkup(item, true)}`;
   document.body.appendChild(menu);
   const rect = button.getBoundingClientRect();
   const menuWidth = 290;
@@ -5964,6 +5997,42 @@ function officialDocumentSheetMarkup(item) {
     </section>`;
 }
 
+function canDeleteConcern(item) {
+  return can("concerns") && cleanupRules.canDeleteConcernRecord({
+    role: canonicalRole(state.currentProfile?.role), actorBarangayId: currentStaffBarangayId(),
+    concernBarangayId: normalize(item.barangayId || barangayIdFor(concernBarangay(item))), kind: item.kind,
+  });
+}
+function concernDeleteMenuMarkup(item, menuRole = false) {
+  if (!canDeleteConcern(item)) return "";
+  return `<button type="button" ${menuRole ? 'role="menuitem"' : ''} class="grouped-action-menu-item concern-delete-action" style="color:light-dark(#b4232f,var(--error));border-top:1px solid light-dark(#e2e8f0,var(--border));margin-top:4px" onclick="triggerConcernActionFromDetail('${safeId(item.id)}', 'delete')"><span class="material-symbols-rounded" aria-hidden="true">delete</span><span>Delete concern</span></button>`;
+}
+window.requestDeleteConcern = (id) => {
+  const item = findCase(id);
+  if (!item || !canDeleteConcern(item)) { showToast("You cannot delete this concern.", true); return; }
+  openModal("Delete concern", "Delete this concern?",
+    `<div class="account-delete-warning"><span class="material-symbols-rounded">warning</span><div><h3>${escapeHtml(item.title || item.category || "Concern")}</h3><p>${escapeHtml(id)}</p><p>This removes the concern from the app and web lists. It cannot be undone. A deletion entry will remain in the audit log.</p></div></div>`,
+    `<button type="button" class="button button--secondary" onclick="closeModal()">Keep concern</button><button type="button" id="confirmDeleteConcern" class="button button--danger">Delete concern</button>`);
+  byId("confirmDeleteConcern").onclick = () => {
+    if (backgroundActions.isActive(`concern:${id}`)) { showToast("Wait for this concern's current update to finish.", true); return; }
+    const started = backgroundActions.start({
+      key: `concern:${id}`, title: "Deleting concern", context: item.title || id, success: "Concern deleted", retry: true,
+      run: async (progress, isCurrent) => {
+        if (!isCurrent()) throw new Error("Sign in with the account that started this deletion.");
+        progress("Removing concern…");
+        const response = await deleteConcernCall({ submissionId: id, confirmDelete: true });
+        if (!response.data?.success) throw new Error("Deletion was not confirmed. Please retry.");
+        if (isCurrent()) {
+          state.concerns = state.concerns.filter(concern => concern.id !== id);
+          renderConcerns(); renderDashboard();
+          if (state.selectedConcernId === id) { state.selectedConcernId = null; window.backToConcernBrowser(); }
+        }
+      },
+    });
+    if (started) closeModal(true);
+  };
+};
+
 function enhancedActionAndReportMarkup(item, entries) {
   const isOversight = isLguAdmin() || canonicalRole(state.currentProfile?.role) === "mayor";
   return `
@@ -5996,6 +6065,7 @@ function enhancedActionAndReportMarkup(item, entries) {
           </header>
           <div class="action-console-content">
             ${caseCurrentActionMarkup(item)}
+            ${canDeleteConcern(item) ? `<div class="concern-review-secondary"><button type="button" class="button button--danger" onclick="requestDeleteConcern('${safeId(item.id)}')"><span class="material-symbols-rounded" aria-hidden="true">delete</span>Delete concern</button></div>` : ""}
           </div>
         </section>
       </div>
@@ -6379,6 +6449,22 @@ window.openHandleConcernModal = (id) => {
   });
 };
 
+function queueConcernUpdate(id, action, reason, success, recover, onSaved = () => {}) {
+  const started = backgroundActions.start({
+    key: `concern:${id}`, title: "Saving report update", context: id, success,
+    recover: () => { recover(); return true; },
+    action: { label: "View report", run: () => openConcern(id, { defaultView: "actions" }) },
+    run: async (progress, isCurrent) => {
+      if (!isCurrent()) throw new Error("Sign in with the account that started this update.");
+      progress("Saving report record…");
+      await reviewConcernCall({ submissionId: id, action, reason });
+      if (isCurrent()) { onSaved(); renderConcerns(); }
+    },
+  });
+  if (started) closeModal(true);
+  else showToast("This report already has an update in progress.");
+}
+
 window.submitHandleConcern = async (id) => {
   const item = findCase(id);
   if (!item) return;
@@ -6388,23 +6474,12 @@ window.submitHandleConcern = async (id) => {
     byId("handleConcernNoteInput")?.focus();
     return;
   }
-  const button = modal.querySelector(".button--primary");
-  setButtonBusy(button, true, "Saving note...");
-
   const actorName = currentOfficialName() || "Barangay Official";
   const now = new Date();
 
-  // The reviewConcern function saves the note on the concern and its public
-  // timeline, and sends the residents' in-app notifications and pushes, in one
-  // step. A failure is reported instead of claiming the note was sent.
-  try {
-    await reviewConcernCall({ submissionId: id, action: "handle", reason: note });
-  } catch (error) {
-    showToast(`Progress note was not sent: ${callableErrorMessage(error)}`, true);
-    setButtonBusy(button, false);
-    return;
-  }
-
+  queueConcernUpdate(id, "handle", note, "Progress note saved", () => {
+    window.openHandleConcernModal(id); protectModalEdits(); byId("handleConcernNoteInput").value = note;
+  }, () => {
   // Update local in-memory concern and UI
   item.status = "being_handled";
   item.handlingNote = note;
@@ -6421,12 +6496,7 @@ window.submitHandleConcern = async (id) => {
     visibility: "public"
   });
 
-  closeModal();
-  showToast("Progress note saved and sent to resident!");
-  renderConcerns();
-  if (byId("page-concerns")?.classList.contains("show-detail") && state.selectedConcernId === id) {
-    await openConcern(id, { defaultView: "actions" });
-  }
+  });
 };
 
 function getStoredSummons(concernId) {
@@ -6526,11 +6596,12 @@ function getComplaintTracker() {
   return complaintTracker ||= createComplaintTracking({
     items: () => state.complaints || [], find: findCase, byId, escape: escapeHtml,
     openModal, closeModal, toast: showToast, call: advanceComplaintWorkflowCall,
-    residentName, protectEdits: protectModalEdits,
+    residentName, protectEdits: protectModalEdits, setButtonBusy, backgroundActions,
     issueSummons: (id) => openIssueSummonsModal(id), viewSummons: (id) => openOfficialSummonsModal(id),
     notifySummons: (id) => openNotifyReporterModal(id),
     openCfa: (id) => openOfficialCfaModal(id),
     openKasunduan: (id) => openOfficialKasunduanModal(id),
+    canDelete: canDeleteComplaint, deleteComplaint: (id) => window.requestDeleteComplaint(id),
     formatDate: (value) => {
       const date = parseDate(value);
       return date.valueOf() ? new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" }).format(date) : "Not recorded";
@@ -6540,6 +6611,38 @@ function getComplaintTracker() {
 }
 function renderComplaints() { getComplaintTracker().render(); }
 window.openComplaintCase = (id) => getComplaintTracker().open(id);
+
+function canDeleteComplaint(item) {
+  return can("complaints") && cleanupRules.canDeleteComplaintRecord({
+    role: canonicalRole(state.currentProfile?.role), actorBarangayId: currentStaffBarangayId(),
+    concernBarangayId: normalize(item.barangayId || barangayIdFor(concernBarangay(item))), kind: item.kind,
+  });
+}
+window.requestDeleteComplaint = (id) => {
+  const item = (state.complaints || []).find(complaint => complaint.id === id);
+  if (!item || !canDeleteComplaint(item)) { showToast("You cannot delete this complaint.", true); return; }
+  openModal("Delete complaint", "Delete this complaint?",
+    `<div class="account-delete-warning"><span class="material-symbols-rounded" aria-hidden="true">warning</span><div><h3>${escapeHtml(id)}</h3><p>Filed by ${escapeHtml(residentName(item))}</p><p>This removes the complaint and its hearing records from the app and web lists. It cannot be undone. A deletion entry will remain in the audit log.</p></div></div>`,
+    `<button type="button" id="keepComplaint" class="button button--secondary">Keep complaint</button><button type="button" id="confirmDeleteComplaint" class="button button--danger">Delete complaint</button>`);
+  byId("keepComplaint").onclick = () => window.openComplaintCase(id);
+  byId("confirmDeleteComplaint").onclick = () => {
+    if (backgroundActions.isActive(`complaint:${id}`)) { showToast("Wait for this complaint's current update to finish.", true); return; }
+    const started = backgroundActions.start({
+      key: `complaint:${id}`, title: "Deleting complaint", context: id, success: "Complaint deleted", retry: true,
+      run: async (progress, isCurrent) => {
+        if (!isCurrent()) throw new Error("Sign in with the account that started this deletion.");
+        progress("Removing complaint…");
+        const response = await deleteComplaintCall({ submissionId: id, confirmDelete: true });
+        if (!response.data?.success) throw new Error("Deletion was not confirmed. Please retry.");
+        if (isCurrent()) {
+          state.complaints = state.complaints.filter(complaint => complaint.id !== id);
+          renderComplaints(); renderDashboard();
+        }
+      },
+    });
+    if (started) closeModal(true);
+  };
+};
 
 window.openIssueSummonsModal = (id) => {
   const item = findCase(id);
@@ -6556,7 +6659,11 @@ window.openIssueSummonsModal = (id) => {
     : `Mediation regarding ${escapeHtml(item.complaint?.complaintType || item.category || item.type || "resident dispute")}`;
 
   const currentCount = item.summons?.summonsCount || (item.summonsHistory?.length ? item.summonsHistory.length : 0);
-  const nextCount = hearing?.number || Math.min(3, currentCount + 1);
+  const nextCount = complaint ? (hearing?.number || trackingRules.completedHearings(item) + 1) : Math.min(3, currentCount + 1);
+  if (complaint && nextCount > trackingRules.MAX_HEARINGS) {
+    showToast("All six rounds are recorded. Continue to CFA review.", true);
+    return;
+  }
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 2);
@@ -6617,17 +6724,15 @@ window.openIssueSummonsModal = (id) => {
           </label>
           <label class="field">
             <span>Assigned Tanod (Server)</span>
-            <input type="text" id="summonsTanodName" placeholder="Name of Tanod" maxlength="100" value="${escapeAttribute(item.summons?.assignedTanod || "Barangay Tanod on duty")}">
+            <input type="text" id="summonsTanodName" placeholder="Leave blank or enter the serving tanod's name" maxlength="100" value="">
           </label>
         </div>
 
         <div class="summons-split-row">
           <label class="field">
             <span>Summons Stage</span>
-            <select id="summonsCountSelect" required>
-              <option value="1" ${nextCount === 1 ? "selected" : ""}>1st Summons (Unang Patawag)</option>
-              <option value="2" ${nextCount === 2 ? "selected" : ""}>2nd Summons (Ikalawang Patawag)</option>
-              <option value="3" ${nextCount === 3 ? "selected" : ""}>3rd Summons (Huling Patawag)</option>
+            <select id="summonsCountSelect" required ${complaint ? "disabled" : ""}>
+              ${Array.from({ length: complaint ? trackingRules.MAX_HEARINGS : 3 }, (_, i) => i + 1).map(n => `<option value="${n}" ${nextCount === n ? "selected" : ""}>${trackingRules.hearingLabel(n)}</option>`).join("")}
             </select>
           </label>
           <label class="field">
@@ -6661,15 +6766,15 @@ window.submitIssueSummons = async (id) => {
   if (!form || form.dataset.saving === "true" || !form.reportValidity()) return;
 
   const summonsCount = parseInt(byId("summonsCountSelect")?.value || "1", 10);
-  const assignedTanod = byId("summonsTanodName")?.value.trim() || "Barangay Tanod on duty";
+  const assignedTanod = byId("summonsTanodName")?.value.trim() || "";
   const respondentName = byId("summonsRespondentName")?.value.trim() || "";
   const respondentAddress = formatCompleteLocation(byId("summonsRespondentAddress")?.value.trim() || "", concernBarangay(item) || "Barili");
   const appearanceDate = byId("summonsAppearanceDate")?.value || "";
   const appearanceTime = byId("summonsAppearanceTime")?.value || "";
   const appearanceVenue = byId("summonsAppearanceVenue")?.value.trim() || "";
   const hearingPurpose = byId("summonsHearingPurpose")?.value.trim() || "";
-  const stageName = summonsCount === 1 ? "1st Summons" : (summonsCount === 2 ? "2nd Summons" : "3rd Summons");
-  const notifyResidentNote = `Official ${stageName} issued to ${respondentName || 'the respondent'}. Assigned to ${assignedTanod} for delivery. Hearing on ${appearanceDate} at ${appearanceTime}.`;
+  const stageName = trackingRules.hearingLabel(summonsCount);
+  const notifyResidentNote = `Official ${stageName} issued to ${respondentName || 'the respondent'}. Assigned to ${assignedTanod || 'a Barangay Tanod'} for delivery. Hearing on ${appearanceDate} at ${appearanceTime}.`;
 
   if (!respondentName) {
     showToast("Please provide the person's name or description.", true);
@@ -6726,12 +6831,14 @@ window.submitIssueSummons = async (id) => {
     deliveryStatus: "pending",
     remarks: notifyResidentNote,
     status: "issued",
-    deliveryMethod: `Personal service via ${assignedTanod}`,
+    deliveryMethod: `Personal service via ${assignedTanod || 'Barangay Tanod'}`,
   };
 
   try {
-    await issueConcernSummonsCall({ submissionId: id, respondentName, respondentAddress,
-      appearanceDate, appearanceTime, appearanceVenue, hearingPurpose, remarks: notifyResidentNote });
+    const response = await issueConcernSummonsCall({ submissionId: id, respondentName, respondentAddress,
+      appearanceDate, appearanceTime, appearanceVenue, hearingPurpose, assignedTanod, remarks: notifyResidentNote });
+    summonsData.officials = response.data?.officials || null;
+    if (summonsData.officials?.barangay) summonsData.barangay = summonsData.officials.barangay;
   } catch (error) {
     showToast(`Summons was not issued: ${callableErrorMessage(error)}`, true);
     setButtonBusy(button, false);
@@ -6907,7 +7014,7 @@ function officialKasunduanDocumentMarkup(item) {
 
 window.openOfficialCfaModal = (id) => {
   const item = findCase(id);
-  if (!item) return;
+  if (!cfaWasIssued(item)) return;
 
   const contentEl = byId("officialSummonsModalContent");
   if (contentEl) {
@@ -6916,7 +7023,7 @@ window.openOfficialCfaModal = (id) => {
 
   const titleEl = byId("officialSummonsModalTitle");
   if (titleEl) {
-    titleEl.textContent = "Certificate to File Action (KP Form 20)";
+    titleEl.textContent = `Certificate to File Action (KP Form ${cfaForms.cfaDocument(item).form})`;
   }
 
   const printBtn = byId("officialSummonsPrintBtn");
@@ -6926,11 +7033,21 @@ window.openOfficialCfaModal = (id) => {
     if (span) span.textContent = "Print Certificate";
   }
 
-  const downloadBtn = byId("officialSummonsDownloadPdfBtn");
-  if (downloadBtn) downloadBtn.style.display = "none";
+  const printBtnBottom = byId("officialSummonsPrintBtnBottom");
+  if (printBtnBottom) printBtnBottom.onclick = () => printCourtCertificate(id);
+  for (const buttonId of ["officialSummonsDownloadPdfBtn", "officialSummonsDownloadPdfBtnBottom"]) {
+    const button = byId(buttonId);
+    if (button) { button.style.display = ""; button.onclick = () => downloadCfaPdf(id); }
+  }
 
-  const notifyBtn = byId("officialSummonsNotifyBtn");
-  if (notifyBtn) notifyBtn.style.display = "none";
+  for (const buttonId of ["officialSummonsNotifyBtn", "officialSummonsNotifyBtnBottom"]) {
+    const button = byId(buttonId);
+    if (!button) continue;
+    button.style.display = "";
+    const label = button.querySelector("span:not(.material-symbols-rounded)");
+    if (label) label.textContent = "Notify complainant";
+    button.onclick = () => { closeOfficialSummonsModal(); openCfaNoticeModal(id); };
+  }
 
   const overlay = byId("officialSummonsModalOverlay");
   if (overlay) {
@@ -6942,7 +7059,7 @@ window.openOfficialCfaModal = (id) => {
 
 window.printCourtCertificate = (id) => {
   const item = findCase(id);
-  if (!item) return;
+  if (!cfaWasIssued(item)) return;
 
   let printSheet = byId("printableSummonsSheet");
   if (!printSheet) {
@@ -6957,27 +7074,115 @@ window.printCourtCertificate = (id) => {
   window.setTimeout(() => document.body.classList.remove("printing-summons"), 300);
 };
 
+function cfaWasIssued(item) {
+  return !!item && (item.closureOutcome === "cfa_issued" || item.status === "cfa_issued");
+}
+function cfaIssueDate(item) {
+  const event = [...(item.statusHistory || [])].reverse().find(entry => entry.action === "issue_cfa");
+  const date = parseDate(item.cfaIssuedAt || event?.date || event?.performedAt || item.closedAt);
+  return date?.getTime() ? date.toLocaleDateString("en-US", { timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric" }) : "________________";
+}
+window.openCfaNoticeModal = (id) => {
+  const item = findCase(id);
+  if (!isComplaintCase(item) || !cfaWasIssued(item)) { showToast("Issue a CFA before sending its notice.", true); return; }
+  const formNumber = cfaForms.cfaDocument(item).form;
+  const message = `Maayong Adlaw, ${residentName(item) || "Resident"}! Your Certificate to File Action (KP Form ${formNumber}) for case ${id} has been issued. Please contact Barangay ${summonsRules.summonsBarangay(item).barangay || "office"} about your certificate and the next steps.`;
+  openModal("CFA notification", "Notify complainant",
+    `<form id="cfaNoticeForm"><p><strong>${escapeHtml(id)}</strong> · KP Form ${escapeHtml(formNumber)}</p><p>To: <strong>${escapeHtml(residentName(item))}</strong></p><label class="field"><span>Message</span><textarea name="message" id="cfaNoticeMessage" rows="5" required minlength="3" maxlength="1000">${escapeHtml(message)}</textarea></label></form>`,
+    `<button type="button" id="cfaNoticeBack" class="button button--secondary">Back to CFA</button><button type="submit" form="cfaNoticeForm" id="cfaNoticeSend" class="button button--primary">Send notification</button>`);
+  protectModalEdits();
+  byId("cfaNoticeBack").onclick = () => { closeModal(true); openOfficialCfaModal(id); };
+  const expectedVersion = item.workflowVersion || 0;
+  const operationId = crypto.randomUUID();
+  byId("cfaNoticeForm").onsubmit = event => {
+    event.preventDefault();
+    if (!event.currentTarget.reportValidity()) return;
+    if (backgroundActions.isActive(`complaint:${id}`)) { showToast("Wait for this complaint's current update to finish.", true); return; }
+    const notice = byId("cfaNoticeMessage").value.trim();
+    if (notice.length < 3) { showToast("Enter a message for the complainant.", true); return; }
+    const request = { submissionId: id, action: "notify_cfa", message: notice, expectedVersion, operationId };
+    const started = backgroundActions.start({
+      key: `complaint:${id}`, title: "Notifying complainant", context: id, success: "CFA notification sent", retry: true,
+      action: { label: "View CFA", run: () => openOfficialCfaModal(id) },
+      recover: () => { openCfaNoticeModal(id); byId("cfaNoticeMessage").value = notice; return true; },
+      run: async (progress, isCurrent) => {
+        if (!isCurrent()) throw new Error("Sign in with the account that started this notification.");
+        progress("Sending CFA notification…");
+        const response = await advanceComplaintWorkflowCall(request);
+        if (!response.data?.success) throw new Error("The notification was not confirmed. Please retry.");
+        if (isCurrent()) { applyComplaintTrackingResponse(id, response.data); renderComplaints(); }
+      },
+    });
+    if (started) closeModal(true);
+  };
+};
+window.downloadCfaPdf = async (id) => {
+  const item = findCase(id);
+  if (!cfaWasIssued(item)) return;
+  try {
+    const pdf = new jsPDF({ unit: "mm", format: "a4" });
+    const margin = 22, width = 166;
+    const [municipalSeal, receivingSeal] = await Promise.all([
+      imageToPngDataUrl(MUNICIPALITY_SEAL).catch(() => null),
+      imageToPngDataUrl(barangayLogoForCase(item) || MUNICIPALITY_SEAL)
+        .catch(() => imageToPngDataUrl(MUNICIPALITY_SEAL).catch(() => null))
+    ]);
+    if (receivingSeal) pdf.addImage(receivingSeal, "PNG", margin, 18, 22, 22);
+    if (municipalSeal) pdf.addImage(municipalSeal, "PNG", 210 - margin - 22, 18, 22, 22);
+    let y = 24;
+    pdf.setFont("times", "normal");
+    const line = (value, { size = 12, bold = false, center = false, gap = 5 } = {}) => {
+      pdf.setFont("times", bold ? "bold" : "normal"); pdf.setFontSize(size);
+      const lines = pdf.splitTextToSize(value, width);
+      for (const text of lines) {
+        if (y > 270) { pdf.addPage(); y = 24; }
+        pdf.text(text, center ? 105 : margin, y, center ? { align: "center" } : {}); y += 6;
+      }
+      y += gap;
+    };
+    const bgy = summonsRules.summonsBarangay(item).barangay || "Not specified";
+    line("Republic of the Philippines\nProvince of Cebu\nMunicipality of Barili", { center: true, gap: 0 });
+    line(`BARANGAY ${bgy.toUpperCase()}\nOFFICE OF THE LUPONG TAGAPAMAYAPA`, { bold: true, center: true });
+    line(`Barangay Case No.: ${item.id}\nDate: ${cfaIssueDate(item)}`);
+    line(`${residentName(item) || "Complainant"}\nComplainant/s\n\n- against -\n\n${complaintRespondent(item) || "Respondent"}\nRespondent/s`);
+    line("CERTIFICATE TO FILE ACTION", { size: 16, bold: true, center: true });
+    const certificate = cfaForms.cfaDocument(item);
+    line(`KP FORM NO. ${certificate.form} — ${certificate.label}`, { size: 10, center: true });
+    line("This is to certify that:");
+    certificate.statements.forEach((statement, index) => line(`${index + 1}. ${statement}`));
+    line(`Office record / grounds: ${certificate.reason}`);
+    line(`Issued on ${cfaIssueDate(item)} at Barangay ${bgy}, Barili, Cebu.`);
+    y += 12;
+    line(`____________________________\n${certificate.secretaryName ? certificate.secretaryName + "\n" : ""}${certificate.secretaryRole}\nCertified by`, { center: true });
+    line(`____________________________\n${certificate.chairName ? certificate.chairName + "\n" : ""}${certificate.chairRole}\nAttested by`, { center: true });
+    pdf.save(`CFA_${String(item.id).replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`);
+    showToast("CFA PDF downloaded.");
+  } catch (error) { showToast(`Unable to download CFA: ${error.message}`, true); }
+};
 function officialCfaDocumentMarkup(item) {
   const complainant = residentName(item) || "Complainant";
   const respondent = complaintRespondent(item) || "Respondent";
-  const bgy = concernBarangay(item) || "Barili";
-  const caseNo = item.id ? (item.id.startsWith("KP-") ? item.id : `KP-${item.id}`) : "KP-CASE";
+  const bgy = summonsRules.summonsBarangay(item).barangay || "Not specified";
+  const barangayLogo = barangayLogoForCase(item) || MUNICIPALITY_SEAL;
+  const caseNo = item.id || "________________";
   const rawCategory = (item.category || item.type || "Dispute").trim();
   const purpose = `Mediation Regarding ${rawCategory}`;
-  const reasonText = item.cfaReason || item.resolutionSummary || "Both parties failed to reach an amicable settlement despite conciliation / Respondent willfully failed to appear.";
+  const certificate = cfaForms.cfaDocument(item);
+  const reasonText = certificate.reason;
 
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const dateStr = cfaIssueDate(item);
 
   return `
     <div class="summons-bondpaper-container">
       <div class="summons-sheet-paper">
-        <div style="text-align: center; font-size: 11pt; line-height: 1.4; margin-bottom: 16px;">
-          <div>Republic of the Philippines</div>
-          <div>Province of Cebu</div>
-          <div>Municipality of Barili</div>
-          <div style="font-weight: bold;">BARANGAY ${escapeHtml(bgy.toUpperCase())}</div>
-          <div style="margin-top: 6px; font-weight: bold; letter-spacing: 0.5px;">OFFICE OF THE LUPONG TAGAPAMAYAPA</div>
+        <div class="kp-official-header">
+          <img class="kp-header-seal kp-header-seal--barangay" src="${escapeAttribute(barangayLogo)}" alt="Barangay ${escapeAttribute(bgy)} seal" onerror="this.onerror=null;this.src='${MUNICIPALITY_SEAL}'">
+          <img class="kp-header-seal kp-header-seal--municipal" src="${MUNICIPALITY_SEAL}" alt="Municipality of Barili seal">
+          <div class="kp-gov-line">REPUBLIC OF THE PHILIPPINES</div>
+          <div class="kp-gov-prov">Province of Cebu</div>
+          <div class="kp-gov-muni">MUNICIPALITY OF BARILI</div>
+          <div class="kp-gov-bgy">BARANGAY ${escapeHtml(bgy.toUpperCase())}</div>
+          <div class="kp-gov-office">OFFICE OF THE LUPONG TAGAPAMAYAPA</div>
         </div>
         <hr style="border: none; border-top: 1.5px solid light-dark(#000, var(--border)); margin-bottom: 20px;">
 
@@ -6998,7 +7203,7 @@ function officialCfaDocumentMarkup(item) {
 
         <div style="text-align: center; margin: 24px 0 16px;">
           <h2 style="font-size: 15pt; font-weight: bold; letter-spacing: 2px; margin: 0;">CERTIFICATE TO FILE ACTION</h2>
-          <small style="font-style: italic; font-size: 10pt;">(KP FORM NO. 20 · KATUNAYAN UPANG MAKADULOG SA HUKUMAN)</small>
+          <small style="font-style: italic; font-size: 10pt;">KP FORM NO. ${escapeHtml(certificate.form)} · ${escapeHtml(certificate.label)}</small>
         </div>
 
         <p style="text-indent: 32px; font-size: 11pt; line-height: 1.7; margin-top: 18px;">
@@ -7006,11 +7211,9 @@ function officialCfaDocumentMarkup(item) {
         </p>
 
         <ol style="font-size: 11pt; line-height: 1.8; padding-left: 28px; margin: 16px 0;">
-          <li>There was a personal confrontation between the parties before the Punong Barangay / Lupong Tagapamayapa;</li>
-          <li>A hearing was called and mediation/conciliation proceedings were conducted in accordance with law;</li>
-          <li><strong>${escapeHtml(reasonText)}</strong>;</li>
-          <li>Therefore, the corresponding complaint for the dispute may now be filed in the proper court, prosecutor's office, or police station.</li>
+          ${certificate.statements.map(statement => `<li>${escapeHtml(statement)}</li>`).join("")}
         </ol>
+        <p style="font-size: 11pt; line-height: 1.7;"><strong>Office record / grounds:</strong> ${escapeHtml(reasonText)}</p>
 
         <p style="font-size: 11pt; margin-top: 24px;">
           Issued this <strong>${escapeHtml(dateStr)}</strong> at Barangay ${escapeHtml(bgy)}, Barili, Cebu.
@@ -7018,21 +7221,53 @@ function officialCfaDocumentMarkup(item) {
 
         <div style="display: flex; justify-content: space-between; margin-top: 56px; font-size: 11pt;">
           <div style="text-align: center; width: 42%;">
-            <div style="border-top: 1px solid light-dark(#000, var(--border)); padding-top: 4px; font-weight: bold;">LUPON SECRETARY</div>
+            <strong>${escapeHtml(certificate.secretaryName)}</strong>
+            <div style="border-top: 1px solid light-dark(#000, var(--border)); padding-top: 4px; font-weight: bold;">${escapeHtml(certificate.secretaryRole.toUpperCase())}</div>
             <div style="font-size: 9.5pt;">Certified by</div>
           </div>
           <div style="text-align: center; width: 42%;">
-            <div style="border-top: 1px solid light-dark(#000, var(--border)); padding-top: 4px; font-weight: bold;">PUNONG BARANGAY</div>
-            <div style="font-size: 9.5pt;">Attested by (Lupon Chairman)</div>
+            <strong>${escapeHtml(certificate.chairName)}</strong>
+            <div style="border-top: 1px solid light-dark(#000, var(--border)); padding-top: 4px; font-weight: bold;">${escapeHtml(certificate.chairRole.toUpperCase())}</div>
+            <div style="font-size: 9.5pt;">Attested by</div>
           </div>
         </div>
 
         <div style="margin-top: auto; padding-top: 24px; font-size: 8.5pt; color: light-dark(#64748b, var(--textSecondary));">
-          KP Form No. 20 · Office of the Lupong Tagapamayapa
+          KP Form No. ${escapeHtml(certificate.form)} · Office of the Lupong Tagapamayapa
         </div>
       </div>
     </div>
   `;
+}
+
+const summonsOfficialsCache = new Map();
+const summonsOfficialsRequests = new Map();
+function summonsSignatories(item) {
+  const identity = summonsRules.summonsBarangay(item);
+  const current = summonsRules.selectSummonsOfficials(state.users, item);
+  const loaded = summonsOfficialsCache.get(item.id);
+  const stored = (getConcernSummons(item) || item.summons)?.officials;
+  const matching = data => data?.barangayId === identity.barangayId ? data : {};
+  return { ...identity,
+    captainName: matching(stored).captainName || matching(loaded).captainName || current.captainName,
+    secretaryName: matching(stored).secretaryName || matching(loaded).secretaryName || current.secretaryName };
+}
+async function loadSummonsSignatories(item) {
+  const known = summonsSignatories(item);
+  if ((known.captainName && known.secretaryName) || summonsOfficialsCache.has(item.id)) return known;
+  if (!summonsOfficialsRequests.has(item.id)) {
+    const generation = state.sessionGeneration;
+    summonsOfficialsRequests.set(item.id, getSummonsOfficialsCall({ submissionId: item.id })
+      .then(response => {
+        if (generation === state.sessionGeneration
+            && response.data?.barangayId === summonsRules.summonsBarangay(item).barangayId) {
+          summonsOfficialsCache.set(item.id, response.data);
+        }
+      }).catch(error => console.warn("Summons official names unavailable", { code: error?.code }))
+      .finally(() => summonsOfficialsRequests.delete(item.id)));
+  }
+  await summonsOfficialsRequests.get(item.id);
+  return summonsSignatories(item);
 }
 
 window.openOfficialSummonsModal = (id) => {
@@ -7047,7 +7282,13 @@ window.openOfficialSummonsModal = (id) => {
 
   const contentEl = byId("officialSummonsModalContent");
   if (contentEl) {
+    contentEl.dataset.caseId = id;
     contentEl.innerHTML = (isComplaintCase(item) && !trackingRules.currentSummons(item) ? '<p class="tracking-warning">Previous summons record. Check the current hearing schedule before using this document.</p>' : "") + officialSummonsDocumentMarkup(item);
+    void loadSummonsSignatories(item).then(() => {
+      if (contentEl.dataset.caseId === id) {
+        contentEl.innerHTML = (isComplaintCase(item) && !trackingRules.currentSummons(item) ? '<p class="tracking-warning">Previous summons record. Check the current hearing schedule before using this document.</p>' : "") + officialSummonsDocumentMarkup(item);
+      }
+    });
   }
 
   const titleEl = byId("officialSummonsModalTitle");
@@ -7082,6 +7323,8 @@ window.openOfficialSummonsModal = (id) => {
   const notifyBtn = byId("officialSummonsNotifyBtn");
   if (notifyBtn) {
     notifyBtn.style.display = isComplaintCase(item) && (!trackingRules.currentSummons(item) || trackingRules.TERMINAL.has(trackingRules.trackingStatus(item))) ? "none" : "";
+    const label = notifyBtn.querySelector("span:not(.material-symbols-rounded)");
+    if (label) label.textContent = "Notify Complainants";
     notifyBtn.onclick = () => {
       closeOfficialSummonsModal();
       openNotifyReporterModal(id);
@@ -7433,6 +7676,15 @@ function formatCompleteLocation(rawAddress, barangayName) {
   return result.replace(/\s*,\s*/g, ", ").replace(/,\s*,/g, ", ").trim();
 }
 
+function summonsOffice(summons) {
+  return summons.phase === "lupon" || Number(summons.hearingNumber || summons.summonsCount) > trackingRules.HEARINGS_PER_PHASE
+    ? "Office of the Lupong Tagapamayapa" : "Office of the Barangay Captain";
+}
+function summonsInvitation(summons) {
+  const number = Number(summons.hearingNumber || summons.summonsCount);
+  return Number.isInteger(number) && number >= 1 && number <= trackingRules.MAX_HEARINGS
+    ? `${trackingRules.hearingPhase(number).phaseNumber} of ${trackingRules.HEARINGS_PER_PHASE}` : "________";
+}
 window.downloadSummonsPdf = async (id) => {
   const item = findCase(id);
   if (!item) return;
@@ -7443,22 +7695,21 @@ window.downloadSummonsPdf = async (id) => {
   if (button) setButtonBusy(button, true, "Preparing PDF...");
   if (buttonBottom) setButtonBusy(buttonBottom, true, "Preparing PDF...");
   try {
-    const bgy = summons.barangay || item.receivingBarangayName || (item.recipientType === "barangay" ? item.department : "") || concernBarangay(item) || "Vito";
-    const complainant = residentName(item) || "Faith Natividad Echavez";
-    const respondent = summons.respondentName || item.respondentName || "GYG";
+    await loadSummonsSignatories(item);
+    const officials = summonsSignatories(item);
+    const bgy = officials.barangay || "Not specified";
+    const complainant = residentName(item) || "Complainant";
+    const respondent = String(summons.respondentName || "").trim() || complaintRespondent(item) || "Name not given";
     const respondentAddr = formatCompleteLocation(summons.respondentAddress || item.location, bgy);
-    const purpose = summons.hearingPurpose || (item.category ? `Mediation Regarding ${item.category}` : "Mediation Regarding Roads");
+    const purpose = summons.hearingPurpose || (item.category ? `Mediation Regarding ${item.category}` : "Case discussion");
 
     const hearingDatePart = parseDateParts(summons.appearanceDate);
     const hearingTimeStr = formatSummonsTimeEnglish(summons.appearanceTime);
 
-    const todayPart = parseDateParts(new Date());
+    const todayPart = parseDateParts(parseDate(summons.issuedAt || summons.createdAt || item.date || new Date()));
     const dateIssuedEnglish = `${todayPart.month} ${todayPart.day}, ${todayPart.year}`;
 
-    let caseNo = item.id || "";
-    if (!caseNo.startsWith("KP-")) {
-      caseNo = `KP-${caseNo}`;
-    }
+    const caseNo = item.id || "________________";
 
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -7476,8 +7727,8 @@ window.downloadSummonsPdf = async (id) => {
     // PAGE 1: OFFICIAL SUMMONS (KP FORM NO. 9)
     // ==========================================
     let y = 22;
-    if (municipalSeal) pdf.addImage(municipalSeal, "PNG", margin, 18, 22, 22);
-    if (receivingSeal) pdf.addImage(receivingSeal, "PNG", pageWidth - margin - 22, 18, 22, 22);
+    if (receivingSeal) pdf.addImage(receivingSeal, "PNG", margin, 18, 22, 22);
+    if (municipalSeal) pdf.addImage(municipalSeal, "PNG", pageWidth - margin - 22, 18, 22, 22);
     pdf.setFont("times", "normal");
     pdf.setFontSize(10.5);
     pdf.setTextColor(0, 0, 0);
@@ -7487,7 +7738,7 @@ window.downloadSummonsPdf = async (id) => {
     pdf.text("MUNICIPALITY OF BARILI", pageWidth / 2, y + 10, { align: "center" });
     pdf.text(`BARANGAY ${bgy.toUpperCase()}`, pageWidth / 2, y + 15, { align: "center" });
     pdf.setFontSize(11);
-    pdf.text("OFFICE OF THE LUPONG TAGAPAMAYAPA", pageWidth / 2, y + 21, { align: "center" });
+    pdf.text(summonsOffice(summons).toUpperCase(), pageWidth / 2, y + 21, { align: "center" });
 
     // Divider Line
     y += 27;
@@ -7526,26 +7777,17 @@ window.downloadSummonsPdf = async (id) => {
     pdf.text(` ${caseNo}`, rightColX + pdf.getTextWidth("BARANGAY CASE NO.:"), y);
 
     pdf.setFont("times", "bold");
-    pdf.text("FOR:", rightColX, y + 8);
-    const forLabelW = pdf.getTextWidth("FOR: ");
-    const availForW = pageWidth - margin - rightColX - forLabelW;
-    const purposeLines = pdf.splitTextToSize(purpose, availForW);
+    pdf.text("SERIES OF:", rightColX, y + 8);
     pdf.setFont("times", "normal");
-    if (purposeLines.length > 0) {
-      pdf.text(purposeLines[0], rightColX + forLabelW, y + 8);
-      for (let i = 1; i < purposeLines.length; i++) {
-        pdf.text(purposeLines[i], rightColX + forLabelW, y + 8 + (i * 4.2));
-      }
-    }
+    pdf.text(String(todayPart.year), rightColX + 24, y + 8);
 
-    const forExtra = Math.max(0, (purposeLines.length - 1) * 4.2);
     pdf.setFont("times", "bold");
-    pdf.text("DATE ISSUED:", rightColX, y + 16 + forExtra);
+    pdf.text("FOR INVITATION:", rightColX, y + 16);
     pdf.setFont("times", "normal");
-    pdf.text(` ${dateIssuedEnglish}`, rightColX + pdf.getTextWidth("DATE ISSUED:"), y + 16 + forExtra);
+    pdf.text(summonsInvitation(summons), rightColX + 33, y + 16);
 
     // Subtle Vertical Divider Line between Left & Right caption
-    const captionBottomY = Math.max(y + 27, y + 18 + forExtra);
+    const captionBottomY = y + 27;
     pdf.setDrawColor(203, 213, 225);
     pdf.setLineWidth(0.3);
     pdf.line(rightColX - 5, y - 2, rightColX - 5, captionBottomY + 2);
@@ -7555,14 +7797,6 @@ window.downloadSummonsPdf = async (id) => {
     pdf.setFont("times", "bold");
     pdf.setFontSize(15);
     pdf.text("S U M M O N S", pageWidth / 2, y, { align: "center" });
-
-    // TO Block
-    y += 12;
-    pdf.setFont("times", "bold");
-    pdf.setFontSize(11);
-    pdf.text(`TO: ${respondent.toUpperCase()}`, margin, y);
-    pdf.setFont("times", "normal");
-    pdf.text(respondentAddr, margin + 8, y + 5);
 
     const rawVenue = summons.appearanceVenue || item.appearanceVenue || "Barangay Hall";
     const appearanceVenue = formatCompleteLocation(rawVenue, bgy);
@@ -7576,42 +7810,52 @@ window.downloadSummonsPdf = async (id) => {
     y += 15;
     pdf.setFont("times", "normal");
     pdf.setFontSize(10.5);
-    const p1 = `       You are hereby summoned to appear before me in person, together with your witnesses, on the ${hearingDatePart.dayOrdinal} day of ${hearingDatePart.month}, ${hearingDatePart.year}, at ${hearingTimeStr} at the ${appearanceVenue}, then and there to answer to a complaint made before me by complainant ${complainant.toUpperCase()} regarding ${problemType}, a copy of which is attached hereto, for mediation/conciliation of your dispute with the complainant/s.`;
+    const p1 = `       You are hereby summoned to appear before the ${summonsOffice(summons)} on the ${hearingDatePart.dayOrdinal} day of ${hearingDatePart.month}, ${hearingDatePart.year}, at ${hearingTimeStr} at ${appearanceVenue}, regarding the above-captioned case.`;
     const linesP1 = pdf.splitTextToSize(p1, pageWidth - margin * 2);
     pdf.text(linesP1, margin, y);
     y += linesP1.length * 5.2 + 5;
 
-    const p2 = "       You are hereby warned that if you refuse or willfully fail to appear in obedience to this summons, you may be barred from filing any counterclaim arising from said complaint.";
+    const respondentLine = pdf.splitTextToSize(`Respondent summoned: ${respondent}`, pageWidth - margin * 2);
+    pdf.setFont("times", "bold");
+    pdf.text(respondentLine, margin, y);
+    y += respondentLine.length * 5.2 + 5;
+    pdf.setFont("times", "normal");
+    const p2 = `Reason / Subject: ${purpose}`;
     const linesP2 = pdf.splitTextToSize(p2, pageWidth - margin * 2);
     pdf.text(linesP2, margin, y);
     y += linesP2.length * 5.2 + 5;
 
-    pdf.setFont("times", "bold");
-    pdf.text("       FAIL NOT or else face punishment as for contempt of court.", margin, y);
-    y += 10;
-
     pdf.setFont("times", "normal");
-    pdf.text(`       This ${todayPart.dayOrdinal} day of ${todayPart.month}, ${todayPart.year}.`, margin, y);
+    const attestation = pdf.splitTextToSize(`Given this ${todayPart.dayOrdinal} day of ${todayPart.month}, ${todayPart.year} at ${bgy}, Barili, Cebu, Philippines.`, pageWidth - margin * 2);
+    pdf.text(attestation, margin, y);
+    y += attestation.length * 5.2;
 
-    // Signature Block Right
-    y += 24;
-    const sigX = pageWidth - margin - 35;
-    pdf.setLineWidth(0.3);
-    pdf.line(pageWidth - margin - 75, y, pageWidth - margin, y);
-    pdf.setFont("times", "bold");
-    pdf.setFontSize(10.5);
-    pdf.text("Punong Barangay / Pangkat Chairman", sigX, y + 4.5, { align: "center" });
-    pdf.setFont("times", "normal");
-    pdf.setFontSize(9);
-    pdf.text("Signature over Printed Name", sigX, y + 9, { align: "center" });
+    y += 18;
+    if (y + 80 > pageHeight - 20) { pdf.addPage(); y = 28; }
+    const signature = (label, name, role, center, top, width = 68) => {
+      pdf.setFont("times", "normal"); pdf.setFontSize(10.5);
+      pdf.text(label, center, top, { align: "center" });
+      pdf.setFont("times", "bold");
+      const lines = pdf.splitTextToSize(name || "________________________", width);
+      pdf.text(lines, center, top + 15, { align: "center" });
+      const bottom = top + 15 + (lines.length - 1) * 4.5;
+      pdf.line(center - width / 2, bottom + 1.5, center + width / 2, bottom + 1.5);
+      pdf.setFont("times", "normal"); pdf.setFontSize(10);
+      pdf.text(role, center, bottom + 6, { align: "center" });
+      return bottom + 6;
+    };
+    const signatureBottom = Math.max(
+      signature("Prepared by:", officials.secretaryName, "Barangay Secretary", margin + 35, y),
+      signature("Noted by:", officials.captainName, "Barangay Captain", pageWidth - margin - 35, y));
+    signature("Serve by:", summonsRules.manualTanodName(summons.assignedTanod), "Barangay Tanod", pageWidth / 2, signatureBottom + 14);
 
     // Page 1 Footer
     pdf.setFont("times", "normal");
     pdf.setFontSize(8.5);
-    pdf.text("KP Form No. 9 - Summons for the Respondent", margin, pageHeight - 14);
+    pdf.text(`Barangay Summons - ${bgy} - ${caseNo}`, margin, pageHeight - 14);
 
-    pdf.save(`KP_Form_No_9_${item.id}.pdf`);
-    showToast("KP Form No. 9 Summons PDF downloaded.");
+    pdf.save(`Barangay_Summons_${item.id}.pdf`);
+    showToast("Barangay Summons PDF downloaded.");
   } catch (err) {
     console.error("Failed to generate summons PDF", err);
     showToast("Failed to download PDF. You can use Print instead.", true);
@@ -7621,13 +7865,14 @@ window.downloadSummonsPdf = async (id) => {
   }
 };
 
-window.printBarangaySummons = (id) => {
+window.printBarangaySummons = async (id) => {
   const item = findCase(id);
   if (!item || !item.summons) {
     showToast("No summons found for this complaint.", true);
     return;
   }
 
+  await loadSummonsSignatories(item);
   let printSheet = byId("printableSummonsSheet");
   if (!printSheet) {
     printSheet = document.createElement("div");
@@ -7643,13 +7888,15 @@ window.printBarangaySummons = (id) => {
 
 function officialSummonsDocumentMarkup(item) {
   const summons = getConcernSummons(item) || item.summons || {};
-  const complainant = residentName(item) || "Faith Natividad Echavez";
-  const respondent = summons.respondentName || item.respondentName || "GYG";
-  const bgy = summons.barangay || item.receivingBarangayName || (item.recipientType === "barangay" ? item.department : "") || concernBarangay(item) || "Vito";
+  const complainant = residentName(item) || "Complainant";
+  const respondent = String(summons.respondentName || "").trim() || complaintRespondent(item) || "Name not given";
+  const officials = summonsSignatories(item);
+  const bgy = officials.barangay || "Not specified";
+  const tanodName = summonsRules.manualTanodName(summons.assignedTanod);
   const barangayLogo = barangayLogoForCase(item, summons) || MUNICIPALITY_SEAL;
   const respondentAddr = formatCompleteLocation(summons.respondentAddress || item.location, bgy);
   const rawCategory = (item.category || "").trim();
-  const formattedCategory = rawCategory ? (rawCategory.charAt(0).toUpperCase() + rawCategory.slice(1)) : "Roads";
+  const formattedCategory = rawCategory ? (rawCategory.charAt(0).toUpperCase() + rawCategory.slice(1)) : "Concern";
   const purpose = summons.hearingPurpose || `Mediation Regarding ${formattedCategory}`;
   const problemType = summons.hearingPurpose
     ? summons.hearingPurpose.replace(/^mediation\s+(regarding|on|for)\s+/i, "")
@@ -7661,13 +7908,10 @@ function officialSummonsDocumentMarkup(item) {
   const hearingDatePart = parseDateParts(summons.appearanceDate);
   const hearingTimeStr = formatSummonsTimeEnglish(summons.appearanceTime);
 
-  const todayPart = parseDateParts(new Date());
+  const todayPart = parseDateParts(parseDate(summons.issuedAt || summons.createdAt || item.date || new Date()));
   const dateIssuedEnglish = `${todayPart.month} ${todayPart.day}, ${todayPart.year}`;
 
-  let caseNo = item.id || "";
-  if (!caseNo.startsWith("KP-")) {
-    caseNo = `KP-${caseNo}`;
-  }
+  const caseNo = item.id || "________________";
 
   return `
     <div class="summons-bondpaper-container">
@@ -7676,13 +7920,13 @@ function officialSummonsDocumentMarkup(item) {
            ========================================== -->
       <article class="summons-sheet-paper summons-bond-page summons-page-1">
         <div class="kp-official-header">
-          <img class="kp-header-seal kp-header-seal--municipal" src="${MUNICIPALITY_SEAL}" alt="Municipality of Barili seal">
           <img class="kp-header-seal kp-header-seal--barangay" src="${escapeAttribute(barangayLogo)}" alt="Barangay ${escapeAttribute(bgy)} seal" onerror="this.onerror=null;this.src='${MUNICIPALITY_SEAL}'">
+          <img class="kp-header-seal kp-header-seal--municipal" src="${MUNICIPALITY_SEAL}" alt="Municipality of Barili seal">
           <div class="kp-gov-line">REPUBLIC OF THE PHILIPPINES</div>
           <div class="kp-gov-prov">Province of Cebu</div>
           <div class="kp-gov-muni">MUNICIPALITY OF BARILI</div>
           <div class="kp-gov-bgy">BARANGAY ${escapeHtml(bgy.toUpperCase())}</div>
-          <div class="kp-gov-office">OFFICE OF THE LUPONG TAGAPAMAYAPA</div>
+          <div class="kp-gov-office">${summonsOffice(summons).toUpperCase()}</div>
         </div>
 
         <hr class="kp-solid-rule">
@@ -7708,46 +7952,41 @@ function officialSummonsDocumentMarkup(item) {
               <span class="kp-case-field-val">${escapeHtml(caseNo)}</span>
             </div>
             <div class="kp-case-field">
-              <span class="kp-case-field-label">FOR:</span>
-              <span class="kp-case-field-val">${escapeHtml(purpose)}</span>
+              <span class="kp-case-field-label">SERIES OF:</span>
+              <span class="kp-case-field-val">${escapeHtml(todayPart.year)}</span>
             </div>
             <div class="kp-case-field">
-              <span class="kp-case-field-label">DATE ISSUED:</span>
-              <span class="kp-case-field-val">${escapeHtml(dateIssuedEnglish)}</span>
+              <span class="kp-case-field-label">FOR INVITATION:</span>
+              <span class="kp-case-field-val">${escapeHtml(summonsInvitation(summons))}</span>
             </div>
           </div>
         </div>
 
         <div class="kp-summons-title">S U M M O N S</div>
 
-        <div class="kp-to-block">
-          <div class="kp-to-name">TO: ${escapeHtml(respondent.toUpperCase())}</div>
-          <div class="kp-to-address">${escapeHtml(respondentAddr)}</div>
-        </div>
-
         <div class="kp-body-paragraphs">
           <p>
-            You are hereby summoned to appear before me in person, together with your witnesses, on the <strong>${escapeHtml(hearingDatePart.dayOrdinal)} day of ${escapeHtml(hearingDatePart.month)}, ${escapeHtml(hearingDatePart.year)}, at ${escapeHtml(hearingTimeStr)}</strong> at the <strong>${escapeHtml(appearanceVenue)}</strong>, then and there to answer to a complaint made before me by complainant <strong>${escapeHtml(complainant.toUpperCase())}</strong> regarding <strong>${escapeHtml(problemType)}</strong>, a copy of which is attached hereto, for mediation/conciliation of your dispute with the complainant/s.
+            You are hereby summoned to appear before the ${summonsOffice(summons)} on the <strong>${escapeHtml(hearingDatePart.dayOrdinal)} day of ${escapeHtml(hearingDatePart.month)}, ${escapeHtml(hearingDatePart.year)}, at ${escapeHtml(hearingTimeStr)}</strong> at <strong>${escapeHtml(appearanceVenue)}</strong>, regarding the above-captioned case.
           </p>
+          <p><strong>Respondent summoned:</strong> ${escapeHtml(respondent)}</p>
           <p>
-            You are hereby warned that if you refuse or willfully fail to appear in obedience to this summons, you may be barred from filing any counterclaim arising from said complaint.
-          </p>
-          <p class="kp-fail-not">
-            <strong>FAIL NOT or else face punishment as for contempt of court.</strong>
+            <strong>Reason / Subject:</strong> ${escapeHtml(purpose)}
           </p>
           <p class="kp-attestation">
-            This ${escapeHtml(todayPart.dayOrdinal)} day of ${escapeHtml(todayPart.month)}, ${escapeHtml(todayPart.year)}.
+            Given this ${escapeHtml(todayPart.dayOrdinal)} day of ${escapeHtml(todayPart.month)}, ${escapeHtml(todayPart.year)} at ${escapeHtml(bgy)}, Barili, Cebu, Philippines.
           </p>
         </div>
 
-        <div class="kp-signature-block-right">
-          <div class="kp-sig-line"></div>
-          <div class="kp-sig-title">Punong Barangay / Pangkat Chairman</div>
-          <div class="kp-sig-sub">Signature over Printed Name</div>
+        <div class="kp-signatories-row">
+          <div class="kp-signatory"><div>Prepared by:</div><div class="kp-signatory-name">${escapeHtml(officials.secretaryName || "________________________")}</div><div>Barangay Secretary</div></div>
+          <div class="kp-signatory"><div>Noted by:</div><div class="kp-signatory-name">${escapeHtml(officials.captainName || "________________________")}</div><div>Barangay Captain</div></div>
+        </div>
+        <div class="kp-signatory kp-signatory--tanod">
+          <div>Serve by:</div><div class="kp-signatory-name">${escapeHtml(tanodName || "________________________")}</div><div>Barangay Tanod</div>
         </div>
 
         <div class="kp-form-footer">
-          KP Form No. 9 - Summons for the Respondent
+          Barangay Summons · ${escapeHtml(bgy)} · ${escapeHtml(caseNo)}
         </div>
       </article>
     </div>
@@ -7792,20 +8031,9 @@ window.sendRequestMoreInfo = async (id) => {
     byId("requestedInfoMessage")?.focus();
     return;
   }
-  const button = modal.querySelector(".button--primary");
-  setButtonBusy(button, true, "Sending…");
-  try {
-    await reviewConcernCall({ submissionId: id, action: "request_information", reason: message });
-    closeModal();
-    showToast(`Request sent to resident.`);
-    renderConcerns();
-    if (byId("page-concerns")?.classList.contains("show-detail") && state.selectedConcernId === id) {
-      await openConcern(id, { defaultView: "actions" });
-    }
-  } catch (error) {
-    showToast(`Failed to send request: ${callableErrorMessage(error)}`, true);
-    setButtonBusy(button, false);
-  }
+  queueConcernUpdate(id, "request_information", message, "Information request saved", () => {
+    window.openAskInfoModal(id); protectModalEdits(); byId("requestedInfoMessage").value = message;
+  });
 };
 
 window.openConcernOutcomeModal = (id, action) => {
@@ -7830,20 +8058,9 @@ window.confirmConcernOutcome = async (id, action) => {
     byId("concernOutcomeReason")?.focus();
     return;
   }
-  const button = modal.querySelector(".button--primary");
-  setButtonBusy(button, true, "Saving...");
-  try {
-    await reviewConcernCall({ submissionId: id, action, reason });
-    closeModal();
-    showToast("Review decision saved.");
-    renderConcerns();
-    if (byId("page-concerns")?.classList.contains("show-detail") && state.selectedConcernId === id) {
-      await openConcern(id, { defaultView: "actions" });
-    }
-  } catch (error) {
-    showToast(callableErrorMessage(error), true);
-    setButtonBusy(button, false);
-  }
+  queueConcernUpdate(id, action, reason, "Review decision saved", () => {
+    window.openConcernOutcomeModal(id, action); protectModalEdits(); byId("concernOutcomeReason").value = reason;
+  });
 };
 
 window.openResolveConcernModal = (id) => {
@@ -7884,20 +8101,9 @@ window.confirmResolveConcern = async (id) => {
     byId("resolutionSummaryInput")?.focus();
     return;
   }
-  const button = modal.querySelector(".button--primary");
-  setButtonBusy(button, true, "Resolving…");
-  try {
-    await reviewConcernCall({ submissionId: id, action: "resolve", reason: summary });
-    closeModal();
-    showToast(`Concern ${id} marked Resolved.`);
-    renderConcerns();
-    if (byId("page-concerns")?.classList.contains("show-detail") && state.selectedConcernId === id) {
-      await openConcern(id, { defaultView: "actions" });
-    }
-  } catch (error) {
-    showToast(`Failed to resolve concern: ${callableErrorMessage(error)}`, true);
-    setButtonBusy(button, false);
-  }
+  queueConcernUpdate(id, "resolve", summary, "Concern resolution saved", () => {
+    window.openResolveConcernModal(id); protectModalEdits(); byId("resolutionSummaryInput").value = summary;
+  });
 };
 
 window.openMoreOptionsModal = (id) => {
@@ -8732,7 +8938,7 @@ function renderUsersAndVerifications() {
       const typeConfig = isBrgy
         ? { label: "Barangay Official", icon: "apartment", cls: "account-chip--barangay", avatarCls: "people-avatar--barangay" }
         : isOrg
-        ? { label: "Partner Organization", icon: "handshake", cls: "account-chip--partner", avatarCls: "people-avatar--partner" }
+        ? { label: organizationAccountTypeLabel(user), icon: "handshake", cls: "account-chip--partner", avatarCls: "people-avatar--partner" }
         : role === "mayor"
         ? { label: "Municipal Mayor", icon: "account_balance", cls: "account-chip--admin", avatarCls: "people-avatar--admin" }
         : role === "super_admin"
@@ -11268,16 +11474,22 @@ window.openVerification = async (id) => {
 async function submitVerificationDecision(id, decision, rejectionReason = "", rejectionNote = "") {
   const user = state.residentVerifications.find((item) => item.id === id);
   if (!user || !canReviewResidentVerification(user)) { showToast("This verification is outside your authorized barangay.", true); return; }
-  const button = modal.querySelector(".button--primary, .button--danger");
-  setButtonBusy(button, true, decision === "approved" ? "Approvingâ€¦" : "Saving decisionâ€¦");
-  try {
-    setButtonBusy(button, true, decision === "approved" ? "Verifying..." : "Updating...");
-    await reviewResidentVerificationCall({
-      residentId: id,
-      decision,
-      rejectionReason,
-      rejectionNote
-    });
+  const started = backgroundActions.start({
+    key: `verification:${id}`, title: "Saving resident verification", context: user.name || "Resident", success: "Verification decision saved",
+    recover: () => {
+      if (decision === "additional_document_required") {
+        window.openVerificationNeedsAttention(id); protectModalEdits();
+        byId("verificationAttentionReason").value = rejectionReason;
+        byId("verificationAttentionNote").value = rejectionNote;
+      } else window.openVerification(id);
+      return true;
+    },
+    action: { label: "View verification", run: () => window.openVerification(id) },
+    run: async (progress, isCurrent) => {
+      if (!isCurrent()) throw new Error("Sign in with the account that started this decision.");
+      progress("Saving verification decision…");
+      await reviewResidentVerificationCall({ residentId: id, decision, rejectionReason, rejectionNote });
+      if (!isCurrent()) return;
     const reviewedAt = new Date();
     user.verificationStatus = decision === "approved" ? "verified" : "additional_document_required";
     user.reviewedAt = reviewedAt;
@@ -11294,30 +11506,12 @@ async function submitVerificationDecision(id, decision, rejectionReason = "", re
     state.verificationCounts.pending = Math.max(0, state.verificationCounts.pending - 1);
     if (decision === "approved") state.verificationCounts.verified += 1;
     else state.verificationCounts.needsResubmission += 1;
-    closeModal();
-    renderUsersAndVerifications();
-    renderDashboard();
-    showToast(decision === "approved"
-      ? "Resident account verified."
-      : "The resident was notified that verification needs attention.");
-    void loadResidentVerifications({ quiet: true });
-  } catch (error) {
-    setButtonBusy(button, false);
-    const errorCode = String(error?.code || "");
-    const errorMessage = callableErrorMessage(error);
-    if (errorCode.includes("failed-precondition") && /already been reviewed|already reviewed/i.test(errorMessage)) {
-      await loadResidentVerifications({ quiet: true });
-      window.openVerification(id);
-      showToast("This verification request has already been reviewed.", true);
-      return;
-    }
-    const message = decision === "approved"
-      ? "Unable to verify this resident. Please try again."
-      : "Unable to update this verification. Please try again.";
-    const target = byId("verificationDecisionError");
-    if (target) { target.textContent = message; target.hidden = false; }
-    showToast(message, true);
-  }
+      renderUsersAndVerifications(); renderDashboard();
+      void loadResidentVerifications({ quiet: true });
+    },
+  });
+  if (started) closeModal(true);
+  else showToast("This resident already has a decision being saved.");
 }
 
 window.confirmVerificationApproval = (id) => {
@@ -11566,7 +11760,7 @@ window.openUser = (id) => {
   const typeConfig = isBrgy
     ? { label: "Barangay Official", icon: "apartment", cls: "account-chip--barangay", avatarCls: "people-avatar--barangay" }
     : isOrg
-    ? { label: "Partner Organization", icon: "handshake", cls: "account-chip--partner", avatarCls: "people-avatar--partner" }
+    ? { label: organizationAccountTypeLabel(user), icon: "handshake", cls: "account-chip--partner", avatarCls: "people-avatar--partner" }
     : role === "super_admin"
     ? { label: "Municipal Administrator", icon: "account_balance", cls: "account-chip--admin", avatarCls: "people-avatar--admin" }
     : { label: "LGU Staff", icon: "badge", cls: "account-chip--lgu", avatarCls: "people-avatar--lgu" };
@@ -12184,34 +12378,19 @@ function announcementFormValues(statusOverride) {
 }
 
 async function saveAnnouncement(statusOverride) {
-  const isEditing = Boolean(state.editingAnnouncementId);
-  const button = (statusOverride && isEditing) || statusOverride === "draft"
-    ? byId("saveAnnouncementDraft") : byId("publishAnnouncement");
-  let uploadedPath = "";
-  let uploadCompleted = false;
-  setButtonBusy(button, true, isEditing && !statusOverride ? "Saving changes…" : statusOverride === "draft" ? "Saving…" : state.announcementDelivery === "scheduled" ? "Scheduling…" : "Publishing…");
   try {
+    const isEditing = Boolean(state.editingAnnouncementId);
     const publisher = validateAnnouncementPublisher();
     const values = announcementFormValues(statusOverride);
     const existing = isEditing ? findAnnouncementById(state.editingAnnouncementId) : null;
     if (isEditing && !existing) throw new Error("This announcement is no longer available. Refresh the page before editing it again.");
-    const id = existing?.id || `POST-${Date.now()}`;
+    const id = existing?.id || `POST-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     const revision = Number(existing?.revision || 0) + 1;
     let imageUrl = existing?._removeImage ? "" : (existing?.imageUrl || "");
     let imageStoragePath = existing?._removeImage ? "" : (existing?.imageStoragePath || "");
     const image = byId("announcementImage").files[0];
-    if (image) {
-      const imageMetadata = announcementImageMetadata(image);
-      uploadedPath = `announcements/${publisher.uid}/${id}/announcement-${Date.now()}.${imageMetadata.extension}`;
-      const imageReference = storageRef(storage, uploadedPath);
-      await uploadBytes(imageReference, image, {
-        contentType: imageMetadata.contentType,
-        customMetadata: { ownerUid: publisher.uid, postId: id }
-      });
-      uploadCompleted = true;
-      imageUrl = await getDownloadURL(imageReference);
-      imageStoragePath = uploadedPath;
-    }
+    if (image) announcementImageMetadata(image);
+    const draft = captureAnnouncementDraft();
     const role = publisher.role;
     const publicAudience = isBarangayRole(role) || (existing && (isBarangayRole(existing.authorRole) || canonicalRole(existing.authorRole) === "barangay"))
       ? false : state.announcementAudience === "municipality";
@@ -12277,6 +12456,44 @@ async function saveAnnouncement(statusOverride) {
       eventLocation: values.addToCalendar ? values.eventLocation : "",
       cta: values.cta, imageUrl, imageStoragePath, revision, updatedAt: serverTimestamp()
     };
+    const started = backgroundActions.start({
+      key: `announcement:${id}`,
+      context: values.title,
+      title: values.status === "draft" ? "Saving announcement draft" : "Posting announcement",
+      success: values.status === "draft" ? "Announcement draft saved" : values.status === "scheduled" ? "Announcement scheduled" : values.status === "pending_review" ? "Announcement submitted for review" : "Announcement saved",
+      action: { label: "View announcements", run: () => navigateTo("announcements") },
+      recover: async () => {
+        if (auth.currentUser?.uid !== publisher.uid) throw new Error("Sign in with the account that submitted this announcement.");
+        const saved = await getDocFromServer(doc(db, "posts", id));
+        if (!existing && saved.exists()) { showToast("This announcement was already saved."); navigateTo("announcements"); return true; }
+        return restoreAnnouncementDraft(draft);
+      },
+      run: async (progress) => {
+        let uploadedPath = "";
+        let uploadCompleted = false;
+        try {
+          if (auth.currentUser?.uid !== publisher.uid) throw new Error("Your account changed. Sign in again to submit this announcement.");
+    if (image) {
+      announcementImageMetadata(image);
+      progress("Preparing image…");
+      const uploadImage = await prepareAnnouncementImage(image);
+      const imageMetadata = announcementImageMetadata(uploadImage);
+      uploadedPath = `announcements/${publisher.uid}/${id}/announcement-${Date.now()}.${imageMetadata.extension}`;
+      const imageReference = storageRef(storage, uploadedPath);
+      const upload = uploadBytesResumable(imageReference, uploadImage, {
+        contentType: imageMetadata.contentType,
+        customMetadata: { ownerUid: publisher.uid, postId: id }
+      });
+      await new Promise((resolve, reject) => upload.on("state_changed", snapshot => {
+        progress("Uploading image…", Math.round(snapshot.bytesTransferred / Math.max(snapshot.totalBytes, 1) * 100));
+      }, reject, resolve));
+      uploadCompleted = true;
+      imageUrl = await getDownloadURL(imageReference);
+      imageStoragePath = uploadedPath;
+    }
+          payload.imageUrl = imageUrl;
+          payload.imageStoragePath = imageStoragePath;
+          if (auth.currentUser?.uid !== publisher.uid) throw new Error("Your account changed. Review this submission before trying again.");
     const batch = writeBatch(db);
     if (existing) {
       const updatePayload = { ...payload };
@@ -12301,30 +12518,66 @@ async function saveAnnouncement(statusOverride) {
     }
     // The post trigger synchronizes or cancels its linked calendar event.
     addAuditToBatch(batch, existing ? "announcement_updated" : `announcement_${values.status === "approved" ? "published" : values.status}`, "post", id, { audience: publicAudience ? "municipality" : values.targets, revision, publisherRole: role });
+    progress("Finishing…");
     await batch.commit();
+          if (auth.currentUser?.uid === publisher.uid) {
+            try { renderAnnouncements(); } catch { console.warn("Saved announcement list could not be refreshed."); }
+          }
+        } catch (error) {
+          if (uploadCompleted && uploadedPath) { try { await deleteObject(storageRef(storage, uploadedPath)); } catch (_) {} }
+          throw new Error(error?.code === "storage/unauthorized"
+            ? "Image upload was denied. Review your account and try again."
+            : error?.code === "permission-denied" ? "Your account is not allowed to change this announcement." : callableErrorMessage(error));
+        }
+      },
+    });
+    if (!started) { showToast("This announcement is already being saved."); return; }
     resetAnnouncementForm();
-    if (values.status === "draft") {
-      state.announcementTab = "draft";
-      state.announcementArchiveView = false;
-    } else if (values.status === "scheduled") {
-      state.announcementTab = "scheduled";
-      state.announcementArchiveView = false;
-    } else if (values.status === "approved") {
-      state.announcementTab = "current";
-      state.announcementArchiveView = false;
-    }
+    state.announcementTab = values.status === "draft" ? "draft" : values.status === "scheduled" ? "scheduled" : "current";
+    state.announcementArchiveView = false;
     renderAnnouncements();
-    showToast(existing && !statusOverride ? "Changes saved." : values.status === "draft" ? "Announcement saved as a draft." : values.status === "pending_review" ? "Announcement submitted for LGU review." : values.status === "scheduled" ? "Announcement scheduled." : existing ? "Announcement updated." : "Official announcement published.");
-  } catch (error) {
-    if (uploadCompleted && uploadedPath) { try { await deleteObject(storageRef(storage, uploadedPath)); } catch (_) {} }
-    showToast(error?.code === "storage/unauthorized"
-      ? "Image upload was denied. Refresh the page and sign in again. If it continues, ask an administrator to check this staff account."
-      : error?.code === "permission-denied"
-        ? "Your account is not allowed to change this announcement. Refresh the page or contact an administrator."
-        : callableErrorMessage(error), true);
-  } finally {
-    setButtonBusy(button, false);
+  } catch (error) { showToast(callableErrorMessage(error), true); }
+}
+
+function captureAnnouncementDraft() {
+  return {
+    fields: [...announcementForm.querySelectorAll("input[id], textarea[id], select[id]")].filter(field => field.type !== "file")
+      .map(field => ({ id: field.id, value: field.value, checked: field.checked })),
+    image: byId("announcementImage").files[0],
+    state: { editingAnnouncementId: state.editingAnnouncementId, announcementAudience: state.announcementAudience,
+      announcementPriority: state.announcementPriority, announcementDelivery: state.announcementDelivery,
+      selectedAnnouncementBarangays: new Set(state.selectedAnnouncementBarangays) },
+    originalImage: findAnnouncementById(state.editingAnnouncementId)?.imageUrl || "",
+    removeImage: Boolean(findAnnouncementById(state.editingAnnouncementId)?._removeImage),
+  };
+}
+function restoreAnnouncementDraft(draft) {
+  if (!byId("announcementComposerPanel").hidden &&
+      (byId("announcementTitle").value.trim() || byId("announcementMessage").value.trim() || byId("announcementImage").files.length)) {
+    showToast("Save or close your current draft first. Your failed submission is still available here.", true); return false;
   }
+  window.openAnnouncementComposer();
+  Object.assign(state, draft.state);
+  setAnnouncementPriority(state.announcementPriority);
+  setAnnouncementDelivery(state.announcementDelivery);
+  for (const field of draft.fields) {
+    const element = byId(field.id); if (!element) continue;
+    if (element.type === "checkbox" || element.type === "radio") element.checked = field.checked;
+    else element.value = field.value;
+  }
+  updateAnnouncementCategories(draft.fields.find(field => field.id === "announcementCategory")?.value);
+  updateAnnouncementScheduleFields(); renderAnnouncementAudience(); syncDateTimeDisplays();
+  byId("announcementCalendarFields").hidden = !byId("announcementAddToCalendar").checked;
+  byId("announcementMessageCount").textContent = String(byId("announcementMessage").value.length);
+  if (draft.image) {
+    const transfer = new DataTransfer(); transfer.items.add(draft.image);
+    byId("announcementImage").files = transfer.files; setAnnouncementImagePreview(draft.image);
+  } else if (draft.originalImage && !draft.removeImage) setAnnouncementImagePreview(draft.originalImage);
+  const existing = findAnnouncementById(state.editingAnnouncementId);
+  if (existing) existing._removeImage = draft.removeImage;
+  byId("announcementComposerTitle").textContent = existing ? "Review announcement changes" : "Review announcement";
+  byId("announcementTitle").focus();
+  return true;
 }
 
 function validateAnnouncementPublisher() {
@@ -17081,10 +17334,10 @@ function updateEmergencyHeaderAndButton() {
 
   document.body.classList.toggle("is-barangay-role", isBarangay);
 
-  // 1. Remove/hide outlined header banner in the barangay dashboard only
+  // Keep the broadcast heading limited to accounts that can publish alerts.
   const emergencyHeader = byId("emergencyFeatureHeader") || document.querySelector(".emergency-feature-header-3d");
   if (emergencyHeader) {
-    emergencyHeader.hidden = isBarangay;
+    emergencyHeader.hidden = isBarangay || !can("alerts:publish");
   }
   const emergencyPage = byId("page-emergency");
   if (emergencyPage) {
@@ -17234,6 +17487,18 @@ window.addEventListener("keydown", () => {
     dispatchAudioElement.play().catch(() => {});
   }
 });
+
+function organizationAccountTypeLabel(user) {
+  const organization = user.organizationId
+    ? state.organizations.find((item) => item.id === user.organizationId) : null;
+  const organizationCategory = concernCategories.find((item) => item.id === (organization?.organizationTypeId || organization?.categoryId));
+  const userCategory = concernCategories.find((item) => item.id === (user.organizationTypeId || user.organizationCategoryId));
+  const sector = [organization?.organizationSector, organization?.sector, organizationCategory?.sector,
+    user.organizationSector, user.sector, userCategory?.sector]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .find((value) => value === "public" || value === "private");
+  return sector === "public" ? "Public Organization" : sector === "private" ? "Private Organization" : "Organization";
+}
 
 function getOrgSector(organization, profile = state.currentProfile) {
   if (organization?.organizationSector) return organization.organizationSector;

@@ -1166,13 +1166,6 @@ class _PersonalInformationSheetState extends State<_PersonalInformationSheet> {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 5),
-              Text(
-                'Personal details registered to your Barili citizen account.',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
               const SizedBox(height: 16),
 
               // Registered Account Details (From Account Creation)
@@ -1212,7 +1205,7 @@ class _PersonalInformationSheetState extends State<_PersonalInformationSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'REGISTERED BARANGAY',
+                            'Barangay',
                             style: GoogleFonts.outfit(
                               fontSize: 9.5,
                               fontWeight: FontWeight.w700,
@@ -1223,32 +1216,13 @@ class _PersonalInformationSheetState extends State<_PersonalInformationSheet> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Barangay $barangayName, Barili, Cebu',
+                            barangayName,
                             style: GoogleFonts.outfit(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3.5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: context.colors.brand.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'REGISTERED',
-                        style: GoogleFonts.outfit(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: context.colors.primaryGreen,
-                          letterSpacing: 0.4,
-                        ),
                       ),
                     ),
                   ],
@@ -1291,7 +1265,7 @@ class _PersonalInformationSheetState extends State<_PersonalInformationSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'REGISTERED ACCOUNT EMAIL',
+                            'Email',
                             style: GoogleFonts.outfit(
                               fontSize: 9.5,
                               fontWeight: FontWeight.w700,
@@ -1323,7 +1297,7 @@ class _PersonalInformationSheetState extends State<_PersonalInformationSheet> {
                 decoration: _fieldDecoration(
                   context,
                   'Full name', Icons.person_outline,
-                ),
+                ).copyWith(counterText: ''),
                 validator: ESugidValidators.fullName,
               ),
               const SizedBox(height: 10),
@@ -1348,7 +1322,7 @@ class _PersonalInformationSheetState extends State<_PersonalInformationSheet> {
                   context,
                   'Address / Purok',
                   Icons.home_outlined,
-                ),
+                ).copyWith(counterText: ''),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Purok / Sitio is required';
@@ -1372,9 +1346,10 @@ class _PersonalInformationSheetState extends State<_PersonalInformationSheet> {
                 decoration:
                     _fieldDecoration(
                       context,
-                      'Birth date (MM/DD/YYYY)',
+                      'Birth date',
                       Icons.cake_outlined,
                     ).copyWith(
+                      hintText: 'MM/DD/YYYY',
                       suffixIcon: IconButton(
                         tooltip: 'Choose date',
                         onPressed: _selectBirthDate,
@@ -1383,20 +1358,7 @@ class _PersonalInformationSheetState extends State<_PersonalInformationSheet> {
                     ),
                 validator: validateResidentBirthDate,
               ),
-              if (parseResidentBirthDate(_birthDateController.text)
-                  case final birthDate?)
-                Padding(
-                  padding: const EdgeInsets.only(top: 5, left: 4),
-                  child: Text(
-                    'Age: ${residentAge(birthDate)} years old',
-                    style: GoogleFonts.outfit(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 10),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(13),
@@ -1413,7 +1375,7 @@ class _PersonalInformationSheetState extends State<_PersonalInformationSheet> {
                     const SizedBox(width: 9),
                     Expanded(
                       child: Text(
-                        'Verified barangay, account role, verification status, and permissions are protected and cannot be edited here.',
+                        'Barangay and email cannot be changed here.',
                         style: GoogleFonts.outfit(fontSize: 11.5, height: 1.4),
                       ),
                     ),

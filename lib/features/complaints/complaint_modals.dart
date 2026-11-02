@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/semantic_colors.dart';
 import '../../submission_service.dart';
+import '../../barili_barangays.dart';
 import '../../services/barangay_logo_service.dart';
 import '../../widgets/barangay_logo.dart';
 import 'complaint_role_helper.dart';
@@ -20,17 +22,60 @@ void showSummonsSheet(BuildContext context, Submission complaint) {
 }
 
 class OfficialSummonsPage extends StatefulWidget {
-  const OfficialSummonsPage({super.key, required this.complaint});
+  const OfficialSummonsPage({super.key, required this.complaint, this.officialsLoader});
 
   final Submission complaint;
+  final Future<Map<String, dynamic>> Function(String caseId)? officialsLoader;
 
   @override
   State<OfficialSummonsPage> createState() => _OfficialSummonsPageState();
 }
 
 class _OfficialSummonsPageState extends State<OfficialSummonsPage> {
-  // 0: Official Form (KP Form 9) as the FIRST view, 1: Hearing Notice
+  // 0: Official Form, 1: Hearing Notice.
   int _selectedView = 0;
+  Map<String, dynamic> _loadedOfficials = const {};
+  int _officialsRequest = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOfficials();
+  }
+
+  Future<void> _loadOfficials() async {
+    final request = ++_officialsRequest;
+    final complaint = widget.complaint;
+    final expected = bariliBarangayId(BarangayLogos.forSubmission(complaint)?.canonicalName);
+    if (expected == null) return;
+    final stored = complaint.summons?['officials'];
+    if (stored is Map && stored['barangayId'] == expected
+        && stored['captainName']?.toString().trim().isNotEmpty == true
+        && stored['secretaryName']?.toString().trim().isNotEmpty == true) {
+      return;
+    }
+    try {
+      final loader = widget.officialsLoader;
+      final data = loader != null ? await loader(complaint.id)
+          : Map<String, dynamic>.from((await FirebaseFunctions.instanceFor(region: 'asia-southeast1')
+              .httpsCallable('getSummonsOfficials', options: HttpsCallableOptions(timeout: const Duration(seconds: 10)))
+              .call<Map>({'submissionId': complaint.id})).data);
+      if (mounted && request == _officialsRequest && data['barangayId'] == expected) {
+        setState(() => _loadedOfficials = data);
+      }
+    } catch (_) {
+      // Missing official records stay blank; never substitute the viewing user.
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant OfficialSummonsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.complaint.id != widget.complaint.id) {
+      _loadedOfficials = const {};
+      _loadOfficials();
+    }
+  }
 
   static DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
@@ -74,6 +119,16 @@ class _OfficialSummonsPageState extends State<OfficialSummonsPage> {
     final caseIdentity = BarangayLogos.forSubmission(complaint);
     final caseBarangay = caseIdentity?.canonicalName ??
         caseIdentity?.name ?? complaint.barangay ?? 'Not specified';
+    final expectedId = bariliBarangayId(caseIdentity?.canonicalName);
+    final storedOfficials = summons['officials'];
+    final officials = <String, dynamic>{..._loadedOfficials};
+    if (storedOfficials is Map && storedOfficials['barangayId'] == expectedId) {
+      for (final field in ['captainName', 'secretaryName']) {
+        if (storedOfficials[field]?.toString().trim().isNotEmpty == true) {
+          officials[field] = storedOfficials[field];
+        }
+      }
+    }
 
     final date = ComplaintRoleHelper.formatFriendlyDate(
       hearing?['date'] ?? summons['appearanceDate'] ?? summons['hearingDate'],
@@ -90,7 +145,7 @@ class _OfficialSummonsPageState extends State<OfficialSummonsPage> {
     final tanodName = summons['assignedTanod']?.toString().trim();
     final displayTanod = (tanodName != null && tanodName.isNotEmpty)
         ? tanodName
-        : 'Barangay Tanod on duty';
+        : 'Not yet assigned';
 
     final deliveryStatus = summons['deliveryStatus']?.toString() ?? 'handed_to_tanod';
     final deliveryText = switch (deliveryStatus) {
@@ -180,7 +235,7 @@ class _OfficialSummonsPageState extends State<OfficialSummonsPage> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'Official Form (KP Form 9)',
+                              'Official Form',
                               textAlign: TextAlign.center,
                               style: GoogleFonts.outfit(
                                 fontSize: 12.5,
@@ -259,6 +314,7 @@ class _OfficialSummonsPageState extends State<OfficialSummonsPage> {
                     date: date,
                     time: time,
                     venue: venue,
+                    officials: officials,
                   ),
                   const SizedBox(height: 18),
                   Row(
@@ -349,7 +405,8 @@ class _OfficialSummonsPageState extends State<OfficialSummonsPage> {
                         _infoLine('Date', date, colors),
                         _infoLine('Time', '$time (Philippine time)', colors),
                         _infoLine('Venue', venue, colors),
-                        _infoLine('Handled by', 'Barangay Lupon', colors),
+                        _infoLine('Hearing', complaintHearingLabel(hearing?['number'] ?? summons['hearingNumber'] ?? summons['summonsCount']), colors),
+                        _infoLine('Handled by', isLuponRound(hearing?['number'] ?? summons['hearingNumber'] ?? summons['summonsCount']) ? 'Barangay Lupon' : 'Punong Barangay', colors),
                       ],
                     ),
                   ),
@@ -451,7 +508,7 @@ class _OfficialSummonsPageState extends State<OfficialSummonsPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'View Official Format (KP Form No. 9)',
+                                  'View Official Form',
                                   style: GoogleFonts.outfit(
                                     fontSize: 13.5,
                                     fontWeight: FontWeight.w800,
@@ -539,7 +596,7 @@ class _OfficialSummonsPageState extends State<OfficialSummonsPage> {
   }
 }
 
-/// Authentic bond-paper legal format of KP Form No. 9 matching the web portal.
+/// Summons layout shared with the web preview and printed document.
 class _OfficialSummonsPaperDoc extends StatelessWidget {
   const _OfficialSummonsPaperDoc({
     required this.complaint,
@@ -548,6 +605,7 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
     required this.date,
     required this.time,
     required this.venue,
+    required this.officials,
   });
 
   final Submission complaint;
@@ -556,6 +614,7 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
   final String date;
   final String time;
   final String venue;
+  final Map<String, dynamic> officials;
 
   @override
   Widget build(BuildContext context) {
@@ -567,25 +626,15 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
             : 'Complainant')
         .toUpperCase();
     final respondent = complaint.respondentDisplayName.toUpperCase();
-
-    final rawAddress = summons['respondentAddress']?.toString() ??
-        complaint.complaint['respondentAddress']?.toString() ??
-        complaint.location ??
-        'Barangay ${identity.canonicalName ?? identity.name ?? "Not specified"}';
-    final respondentAddr = rawAddress.contains(bgy) ? rawAddress : '$rawAddress, $bgy';
+    final round = summons['hearingNumber'] ?? hearing?['number'] ?? summons['summonsCount'];
+    final office = isLuponRound(round) ? 'Office of the Lupong Tagapamayapa' : 'Office of the Barangay Captain';
 
     final category = complaint.category.trim().isNotEmpty ? complaint.category : 'Concern';
     final purpose = (summons['hearingPurpose']?.toString().trim().isNotEmpty == true)
         ? summons['hearingPurpose'].toString()
         : 'Mediation Regarding $category';
-    final problemType = summons['hearingPurpose'] != null
-        ? summons['hearingPurpose'].toString().replaceFirst(RegExp(r'^mediation\s+(regarding|on|for)\s+', caseSensitive: false), '')
-        : complaint.title;
 
-    var caseNo = complaint.id;
-    if (!caseNo.startsWith('KP-')) {
-      caseNo = 'KP-$caseNo';
-    }
+    final caseNo = complaint.id;
 
     // Parse hearing date parts
     final hearingDateRaw = hearing?['date'] ?? summons['appearanceDate'] ?? summons['hearingDate'];
@@ -606,7 +655,9 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
     final issueDayOrdinal = _OfficialSummonsPageState._formatOrdinal(issueDate.day);
     final issueMonth = DateFormat('MMMM').format(issueDate);
     final issueYear = issueDate.year.toString();
-    final dateIssuedEnglish = DateFormat('MMMM d, yyyy').format(issueDate);
+    final rawTanod = summons['assignedTanod']?.toString().trim() ?? '';
+    final tanod = RegExp(r'^(?:barangay )?tanod(?: on duty)?$', caseSensitive: false)
+        .hasMatch(rawTanod) ? '' : rawTanod;
 
     return Container(
       decoration: BoxDecoration(
@@ -628,11 +679,11 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
           // Republic Header
           Row(
             children: [
-              Image.asset(
-                BarangayLogos.municipalityAsset,
-                width: 42,
-                height: 42,
-                fit: BoxFit.contain,
+              BarangayLogo(
+                key: const ValueKey('summons-barangay-seal'),
+                barangayId: identity.id,
+                barangayName: identity.name,
+                size: 42,
               ),
               const SizedBox(width: 6),
               Expanded(
@@ -678,7 +729,7 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      'OFFICE OF THE LUPONG TAGAPAMAYAPA',
+                      office.toUpperCase(),
                       textAlign: TextAlign.center,
                       style: GoogleFonts.outfit(
                         fontSize: 12,
@@ -691,10 +742,12 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              BarangayLogo(
-                barangayId: identity.id,
-                barangayName: identity.name,
-                size: 42,
+              Image.asset(
+                BarangayLogos.municipalityAsset,
+                key: const ValueKey('summons-municipal-seal'),
+                width: 42,
+                height: 42,
+                fit: BoxFit.contain,
               ),
             ],
           ),
@@ -788,7 +841,7 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'FOR:',
+                      'SERIES OF:',
                       style: GoogleFonts.poppins(
                         fontSize: 9,
                         fontWeight: FontWeight.w700,
@@ -796,7 +849,7 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      purpose,
+                      issueYear,
                       style: GoogleFonts.outfit(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w700,
@@ -806,7 +859,7 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'DATE ISSUED:',
+                      'FOR INVITATION:',
                       style: GoogleFonts.poppins(
                         fontSize: 9,
                         fontWeight: FontWeight.w700,
@@ -814,7 +867,7 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      dateIssuedEnglish,
+                      round == null ? '________' : '${(complaintRoundNumber(round) - 1) % complaintRoundsPerPhase + 1} of $complaintRoundsPerPhase',
                       style: GoogleFonts.poppins(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
@@ -841,24 +894,6 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
           ),
           const SizedBox(height: 14),
 
-          // TO block
-          Text(
-            'TO: $respondent',
-            style: GoogleFonts.outfit(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF111827),
-            ),
-          ),
-          Text(
-            respondentAddr,
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              color: const Color(0xFF374151),
-            ),
-          ),
-          const SizedBox(height: 14),
-
           // Body text
           RichText(
             text: TextSpan(
@@ -868,8 +903,8 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
                 height: 1.5,
               ),
               children: [
-                const TextSpan(
-                  text: 'You are hereby summoned to appear before me in person, together with your witnesses, on the ',
+                TextSpan(
+                  text: 'You are hereby summoned to appear before the $office on the ',
                 ),
                 TextSpan(
                   text: hearingDate != null
@@ -877,32 +912,30 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
                       : '$date at $time',
                   style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF111827)),
                 ),
-                const TextSpan(text: ' at the '),
+                const TextSpan(text: ' at '),
                 TextSpan(
                   text: venue,
                   style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF111827)),
                 ),
                 const TextSpan(
-                  text: ', then and there to answer to a complaint made before me by complainant ',
-                ),
-                TextSpan(
-                  text: complainant,
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF111827)),
-                ),
-                const TextSpan(text: ' regarding '),
-                TextSpan(
-                  text: problemType,
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF111827)),
-                ),
-                const TextSpan(
-                  text: ', a copy of which is attached hereto, for mediation/conciliation of your dispute with the complainant/s.',
+                  text: ', regarding the above-captioned case.',
                 ),
               ],
             ),
           ),
           const SizedBox(height: 10),
           Text(
-            'You are hereby warned that if you refuse or willfully fail to appear in obedience to this summons, you may be barred from filing any counterclaim arising from said complaint.',
+            'Respondent summoned: $respondent',
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1F2937),
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Reason / Subject: $purpose',
             style: GoogleFonts.poppins(
               fontSize: 11,
               color: const Color(0xFF1F2937),
@@ -911,16 +944,7 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'FAIL NOT or else face punishment as for contempt of court.',
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: const Color(0xFF111827),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'This $issueDayOrdinal day of $issueMonth, $issueYear.',
+            'Given this $issueDayOrdinal day of $issueMonth, $issueYear at ${identity.canonicalName ?? identity.name ?? "the barangay"}, Barili, Cebu, Philippines.',
             style: GoogleFonts.poppins(
               fontSize: 11,
               color: const Color(0xFF374151),
@@ -928,42 +952,22 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
           ),
 
           const SizedBox(height: 24),
-          // Signature Block
-          Align(
-            alignment: Alignment.centerRight,
-            child: SizedBox(
-              width: 190,
-              child: Column(
-                children: [
-                  Container(height: 1, color: const Color(0xFF111827)),
-                  const SizedBox(height: 5),
-                  Text(
-                    'Punong Barangay / Pangkat Chairman',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF111827),
-                    ),
-                  ),
-                  Text(
-                    'Signature over Printed Name',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      fontSize: 9.5,
-                      color: const Color(0xFF6B7280),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _signature('Prepared by:', officials['secretaryName']?.toString() ?? '', 'Barangay Secretary')),
+              const SizedBox(width: 18),
+              Expanded(child: _signature('Noted by:', officials['captainName']?.toString() ?? '', 'Barangay Captain')),
+            ],
           ),
+          const SizedBox(height: 28),
+          Center(child: SizedBox(width: 190, child: _signature('Serve by:', tanod, 'Barangay Tanod'))),
 
           const SizedBox(height: 18),
           Container(height: 1, color: const Color(0xFFE5E7EB)),
           const SizedBox(height: 6),
           Text(
-            'KP Form No. 9 - Summons for the Respondent',
+            'Barangay Summons · ${identity.canonicalName ?? identity.name ?? ""} · $caseNo',
             style: GoogleFonts.poppins(
               fontSize: 9.5,
               fontStyle: FontStyle.italic,
@@ -974,6 +978,20 @@ class _OfficialSummonsPaperDoc extends StatelessWidget {
       ),
     );
   }
+
+  Widget _signature(String label, String name, String role) => Column(
+    children: [
+      Text(label, textAlign: TextAlign.center,
+        style: GoogleFonts.poppins(fontSize: 10.5, color: Colors.black)),
+      const SizedBox(height: 22),
+      Text(name.trim().isEmpty ? '____________________' : name.trim(),
+        textAlign: TextAlign.center,
+        style: GoogleFonts.poppins(fontSize: 10.5, fontWeight: FontWeight.w700,
+          decoration: TextDecoration.underline, color: Colors.black)),
+      Text(role, textAlign: TextAlign.center,
+        style: GoogleFonts.poppins(fontSize: 10, color: Colors.black)),
+    ],
+  );
 }
 
 
